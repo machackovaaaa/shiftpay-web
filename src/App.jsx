@@ -522,19 +522,32 @@ function SettingsScreen({ employers, shiftTypes, onAddShiftType, onAddEmployer, 
     setNameError("");
     setNameMessage("");
 
-    const { data, error } = await supabase.auth.updateUser({
+    // Uložení jména přímo do Supabase Auth metadata.
+    // Když je lokální přihlášení chvíli staré, jednou obnovíme session a zkusíme zápis znovu.
+    const writeName = () => supabase.auth.updateUser({
       data: { full_name: cleanName },
     });
 
+    let result = await writeName();
+
+    if (result.error) {
+      const refreshed = await supabase.auth.refreshSession();
+      if (!refreshed.error && refreshed.data?.session) {
+        result = await writeName();
+      }
+    }
+
     setSavingName(false);
 
-    if (error) {
-      setNameError("Jméno se nepodařilo uložit. Zkus to prosím znovu.");
+    if (result.error || !result.data?.user) {
+      setNameError("Jméno se teď nepodařilo uložit. Zkus to ještě jednou.");
       return;
     }
 
-    if (data?.user) onProfileUpdated?.(data.user);
-    setNameMessage("Jméno je uložené.");
+    const savedName = result.data.user.user_metadata?.full_name || cleanName;
+    setName(savedName);
+    onProfileUpdated?.(result.data.user);
+    setNameMessage("Uloženo ✓");
   };
 
   const removeShiftType = async (id) => { await supabase.from("shift_types").delete().eq("id", id); refresh(); };
