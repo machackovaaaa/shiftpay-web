@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Sun, Sunset, Moon, Plus, Home, Calendar, Settings as SettingsIcon, Coins, Trash2, LogOut, X } from "lucide-react";
+import { Sun, Sunset, Moon, Plus, Home, Calendar, Settings as SettingsIcon, Coins, Trash2, LogOut, X, Play, Square } from "lucide-react";
 import { supabase } from "./lib/supabase";
-import { computeHours, computePay, fmtK, typeLabel } from "./lib/calc";
+import { computeHours, computePay, hoursForShift, payForShift, isLiveShift, liveElapsedLabel, fmtK, typeLabel } from "./lib/calc";
 import Login from "./components/Login";
 
 const C = {
@@ -132,6 +132,71 @@ function AddShiftSheet({ userId, employers, shiftTypes, onClose, onSaved }) {
   );
 }
 
+function StartShiftSheet({ userId, employers, shiftTypes, onClose, onSaved }) {
+  const [employerId, setEmployerId] = useState(employers[0]?.id || "");
+  const [shiftTypeId, setShiftTypeId] = useState(shiftTypes[0]?.id || "");
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    if (!employerId || !shiftTypeId) { setError("Vyber zaměstnavatele a typ směny."); return; }
+    const now = new Date();
+    const { error: err } = await supabase.from("shifts").insert({
+      user_id: userId, employer_id: employerId, shift_type_id: shiftTypeId,
+      shift_date: now.toISOString().slice(0, 10), tip: 0,
+      started_at: now.toISOString(), ended_at: null,
+    });
+    if (err) { setError(err.message); return; }
+    onSaved();
+    onClose();
+  };
+
+  if (employers.length === 0) {
+    return <Sheet title="Spustit směnu" onClose={onClose}><p style={{ fontSize: 13, color: C.sub }}>Nejdřív přidej alespoň jednoho zaměstnavatele v Nastavení.</p></Sheet>;
+  }
+
+  return (
+    <Sheet title="Spustit směnu" onClose={onClose}>
+      <Field label="Zaměstnavatel">
+        <select style={inputStyle} value={employerId} onChange={(e) => setEmployerId(e.target.value)}>
+          {employers.map((e) => <option key={e.id} value={e.id}>{e.name} ({typeLabel(e.type)})</option>)}
+        </select>
+      </Field>
+      <Field label="Typ směny">
+        <select style={inputStyle} value={shiftTypeId} onChange={(e) => setShiftTypeId(e.target.value)}>
+          {shiftTypes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+      </Field>
+      <p style={{ fontSize: 12, color: C.sub, margin: "0 0 6px" }}>Pauza se odečte podle nastavení typu směny, hodiny se počítají podle skutečného odpracovaného času.</p>
+      <ErrorText>{error}</ErrorText>
+      <PrimaryButton onClick={submit}>Start směny teď</PrimaryButton>
+    </Sheet>
+  );
+}
+
+function LiveShiftBanner({ shift, employer, shiftType, onStop }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (!shift) return null;
+  const Icon = ICONS[shiftType?.icon] || Sun;
+  return (
+    <div style={{ background: C.plum, borderRadius: 20, padding: "16px 18px", margin: "16px 20px 0", display: "flex", alignItems: "center", gap: 14, maxWidth: 520, marginLeft: "auto", marginRight: "auto" }}>
+      <div style={{ width: 40, height: 40, borderRadius: 12, background: "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Icon size={18} color="#fff" />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: 12, color: "#C7BEDD", margin: "0 0 2px" }}>{employer?.name} · {shiftType?.name} běží</p>
+        <p style={{ fontFamily: "'IBM Plex Mono', 'Space Grotesk', monospace", fontSize: 20, fontWeight: 600, color: "#fff", margin: 0 }}>{liveElapsedLabel(shift.started_at)}</p>
+      </div>
+      <button onClick={onStop} style={{ display: "flex", alignItems: "center", gap: 6, background: C.coral, color: "#fff", border: "none", borderRadius: 12, padding: "10px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+        <Square size={14} fill="#fff" /> Stop
+      </button>
+    </div>
+  );
+}
+
 function AddEmployerSheet({ userId, onClose, onSaved }) {
   const [name, setName] = useState(""); const [type, setType] = useState("DPP");
   const [rate, setRate] = useState(""); const [trackTips, setTrackTips] = useState(true);
@@ -211,14 +276,14 @@ function OverviewScreen({ employers, shiftTypes, shifts }) {
   const now = new Date();
   const monthKey = now.toISOString().slice(0, 7);
   const monthLabel = now.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" });
-  const monthShifts = shifts.filter((s) => s.shift_date.startsWith(monthKey));
+  const monthShifts = shifts.filter((s) => s.shift_date.startsWith(monthKey) && !isLiveShift(s));
   const perEmployer = employers.map((emp) => {
     const empShifts = monthShifts.filter((s) => s.employer_id === emp.id);
     let wage = 0, tips = 0, hours = 0;
     empShifts.forEach((s) => {
       const st = shiftTypes.find((t) => t.id === s.shift_type_id);
       if (!st) return;
-      wage += computePay(emp, st); tips += Number(s.tip) || 0; hours += computeHours(st);
+      wage += payForShift(s, emp, st); tips += Number(s.tip) || 0; hours += hoursForShift(s, st);
     });
     return { ...emp, wage, tips, hours };
   });
@@ -282,28 +347,34 @@ function OverviewScreen({ employers, shiftTypes, shifts }) {
   );
 }
 
-function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, refresh }) {
+function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, refresh }) {
   const remove = async (id) => { await supabase.from("shifts").delete().eq("id", id); refresh(); };
-  const sorted = [...shifts].sort((a, b) => (a.shift_date < b.shift_date ? 1 : -1));
+  const finished = shifts.filter((s) => !isLiveShift(s));
+  const sorted = [...finished].sort((a, b) => (a.shift_date < b.shift_date ? 1 : -1));
   return (
     <div style={{ maxWidth: 560, margin: "0 auto", padding: "0 20px 40px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 0 16px" }}>
         <p style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 26, color: C.ink, margin: 0 }}>Směny</p>
-        <button onClick={onAdd} style={{ width: 40, height: 40, borderRadius: 12, background: C.coral, border: "none", color: "#fff", cursor: "pointer" }} aria-label="Přidat směnu"><Plus size={20} /></button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onStart} style={{ display: "flex", alignItems: "center", gap: 6, height: 40, borderRadius: 12, background: C.plum, border: "none", color: "#fff", cursor: "pointer", padding: "0 14px", fontSize: 13, fontWeight: 600 }}>
+            <Play size={14} fill="#fff" /> Start
+          </button>
+          <button onClick={onAdd} style={{ width: 40, height: 40, borderRadius: 12, background: C.coral, border: "none", color: "#fff", cursor: "pointer" }} aria-label="Přidat směnu ručně"><Plus size={20} /></button>
+        </div>
       </div>
-      {sorted.length === 0 && <p style={{ fontSize: 13, color: C.sub, background: "#fff", border: `1px dashed ${C.line}`, borderRadius: 16, padding: "16px", textAlign: "center" }}>Zatím žádné směny. Přidej první tlačítkem +.</p>}
+      {sorted.length === 0 && <p style={{ fontSize: 13, color: C.sub, background: "#fff", border: `1px dashed ${C.line}`, borderRadius: 16, padding: "16px", textAlign: "center" }}>Zatím žádné směny. Spusť Start při příchodu do práce, nebo přidej ručně přes +.</p>}
       {sorted.map((s) => {
         const emp = employers.find((e) => e.id === s.employer_id);
         const st = shiftTypes.find((t) => t.id === s.shift_type_id);
         if (!emp || !st) return null;
         const Icon = ICONS[st.icon] || Sun;
-        const hours = computeHours(st); const pay = computePay(emp, st);
+        const hours = hoursForShift(s, st); const pay = payForShift(s, emp, st);
         const dateObj = new Date(s.shift_date + "T00:00:00");
         return (
           <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 14, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 18, padding: "14px 16px", marginBottom: 10 }}>
             <div style={{ width: 44, height: 44, borderRadius: 13, background: C.coralBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon size={18} color={C.coral} /></div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 14, fontWeight: 600, color: C.ink, margin: "0 0 2px" }}>{st.name}</p>
+              <p style={{ fontSize: 14, fontWeight: 600, color: C.ink, margin: "0 0 2px" }}>{st.name}{s.started_at ? " · živě" : ""}</p>
               <p style={{ fontSize: 12, color: C.sub, margin: 0 }}>{emp.name} · {typeLabel(emp.type)} · {dateObj.toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric" })}</p>
             </div>
             <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -394,6 +465,15 @@ export default function App() {
 
   const userId = session?.user?.id;
   const { employers, shiftTypes, shifts, loading, refresh } = useShiftPayData(userId);
+  const liveShift = shifts.find((s) => isLiveShift(s));
+  const liveEmployer = liveShift ? employers.find((e) => e.id === liveShift.employer_id) : null;
+  const liveShiftType = liveShift ? shiftTypes.find((t) => t.id === liveShift.shift_type_id) : null;
+
+  const stopLiveShift = async () => {
+    if (!liveShift) return;
+    await supabase.from("shifts").update({ ended_at: new Date().toISOString() }).eq("id", liveShift.id);
+    refresh();
+  };
 
   if (session === undefined) return null;
   if (!session) return <Login />;
@@ -401,16 +481,18 @@ export default function App() {
   return (
     <div style={{ minHeight: "100vh", background: C.paper, fontFamily: "'Inter', sans-serif" }}>
       <TopNav active={active} setActive={setActive} onLogout={() => supabase.auth.signOut()} />
+      {liveShift && <LiveShiftBanner shift={liveShift} employer={liveEmployer} shiftType={liveShiftType} onStop={stopLiveShift} />}
       {loading ? (
         <p style={{ textAlign: "center", color: C.sub, padding: 40 }}>Načítám data…</p>
       ) : (
         <>
           {active === "overview" && <OverviewScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} />}
-          {active === "shifts" && <ShiftsScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onAdd={() => setSheet("shift")} refresh={refresh} />}
+          {active === "shifts" && <ShiftsScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onAdd={() => setSheet("shift")} onStart={() => setSheet("start")} refresh={refresh} />}
           {active === "settings" && <SettingsScreen employers={employers} shiftTypes={shiftTypes} onAddShiftType={() => setSheet("shiftType")} onAddEmployer={() => setSheet("employer")} refresh={refresh} />}
         </>
       )}
       {sheet === "shift" && <AddShiftSheet userId={userId} employers={employers} shiftTypes={shiftTypes} onClose={() => setSheet(null)} onSaved={refresh} />}
+      {sheet === "start" && <StartShiftSheet userId={userId} employers={employers} shiftTypes={shiftTypes} onClose={() => setSheet(null)} onSaved={refresh} />}
       {sheet === "employer" && <AddEmployerSheet userId={userId} onClose={() => setSheet(null)} onSaved={refresh} />}
       {sheet === "shiftType" && <AddShiftTypeSheet userId={userId} onClose={() => setSheet(null)} onSaved={refresh} />}
     </div>
