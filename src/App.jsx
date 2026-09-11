@@ -5,6 +5,7 @@ import { computeHours, computePay, hoursForShift, payForShift, effectivePauseMin
 import Login from "./components/Login";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import ExcelJS from "exceljs";
 
 const FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif";
 const C = {
@@ -1796,7 +1797,7 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit, r
   );
 }
 
-function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift, onOpenSettings }) {
+function CalendarScreen({ employers, shiftTypes, shifts, userName, onEdit, onAddShift, onOpenSettings }) {
   const today = new Date();
   const [cursor, setCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(() => today.toISOString().slice(0, 10));
@@ -2118,6 +2119,219 @@ function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift, onO
     }
   };
 
+  const exportWorkReport = async () => {
+    setShareInfo("Připravuji pracovní výkaz…");
+
+    try {
+      const workedMonthShifts = monthShifts.filter((s) => (s.status || "worked") === "worked");
+      const usedEmployers = employers.filter((emp) =>
+        workedMonthShifts.some((s) => s.employer_id === emp.id)
+      );
+
+      if (usedEmployers.length === 0) {
+        setShareInfo("V tomto měsíci nejsou žádné odpracované směny k exportu.");
+        return;
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "Spay";
+      workbook.created = new Date();
+
+      const border = {
+        top: { style: "thin", color: { argb: "FF111111" } },
+        left: { style: "thin", color: { argb: "FF111111" } },
+        bottom: { style: "thin", color: { argb: "FF111111" } },
+        right: { style: "thin", color: { argb: "FF111111" } },
+      };
+
+      const monthName = cursor
+        .toLocaleDateString("cs-CZ", { month: "long", year: "numeric" })
+        .toUpperCase();
+
+      usedEmployers.forEach((emp, employerIndex) => {
+        const safeSheetName = (emp.name || `Zaměstnavatel ${employerIndex + 1}`)
+          .replace(/[\\/*?:[\]]/g, " ")
+          .slice(0, 31);
+
+        const ws = workbook.addWorksheet(safeSheetName || `Výkaz ${employerIndex + 1}`, {
+          pageSetup: {
+            paperSize: 9,
+            orientation: "portrait",
+            fitToPage: true,
+            fitToWidth: 1,
+            fitToHeight: 1,
+            margins: {
+              left: 0.25,
+              right: 0.25,
+              top: 0.35,
+              bottom: 0.35,
+              header: 0.1,
+              footer: 0.1,
+            },
+          },
+        });
+
+        ws.views = [{ showGridLines: false }];
+
+        ws.columns = [
+          { key: "from", width: 14 },
+          { key: "to", width: 14 },
+          { key: "hours", width: 15 },
+          { key: "bonus", width: 16 },
+          { key: "date", width: 11 },
+        ];
+
+        ws.mergeCells("A1:D1");
+        ws.getCell("A1").value = (userName || "SPAY").toUpperCase();
+        ws.getCell("E1").value = monthName;
+
+        ["A1", "E1"].forEach((cellRef) => {
+          const cell = ws.getCell(cellRef);
+          cell.font = { name: "Georgia", size: 15, bold: true, color: { argb: "FF111111" } };
+          cell.alignment = { horizontal: "center", vertical: "middle" };
+          cell.border = border;
+        });
+
+        ws.getCell("A1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF09A31" } };
+        ws.getCell("E1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFE7A3" } };
+        ws.getRow(1).height = 27;
+
+        const headers = ["OD", "DO", "HODINY", "BONUSY", "Datum"];
+        headers.forEach((label, idx) => {
+          const cell = ws.getCell(2, idx + 1);
+          cell.value = label;
+          cell.font = { name: "Georgia", size: 13, bold: true, color: { argb: "FF111111" } };
+          cell.alignment = { horizontal: "center", vertical: "middle" };
+          cell.border = border;
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: idx === 4 ? "FFFFF0C9" : "FFFFE3C7" },
+          };
+        });
+        ws.getRow(2).height = 52;
+
+        const employerShifts = workedMonthShifts.filter((s) => s.employer_id === emp.id);
+        const startRow = 3;
+
+        for (let day = 1; day <= daysInMonth; day += 1) {
+          const rowNumber = startRow + day - 1;
+          const dateKey = `${monthKey}-${String(day).padStart(2, "0")}`;
+          const dayShifts = employerShifts.filter((s) => s.shift_date === dateKey);
+
+          const starts = [];
+          const ends = [];
+          let dayHours = 0;
+          let dayBonus = 0;
+
+          dayShifts.forEach((s) => {
+            const shiftType = shiftTypes.find((t) => t.id === s.shift_type_id);
+            if (!shiftType) return;
+            const effectiveType = resolvedShiftType(s, shiftType);
+
+            if (effectiveType?.start_time) starts.push(effectiveType.start_time);
+            if (effectiveType?.end_time) ends.push(effectiveType.end_time);
+
+            dayHours += hoursForShift(s, effectiveType);
+            dayBonus += Number(s.bonus) || 0;
+          });
+
+          const date = new Date(year, month, day);
+          const weekDay = date.getDay();
+          const isSaturday = weekDay === 6;
+          const isSunday = weekDay === 0;
+
+          ws.getCell(rowNumber, 1).value = starts.join("\n");
+          ws.getCell(rowNumber, 2).value = ends.join("\n");
+          ws.getCell(rowNumber, 3).value = dayHours / 24;
+          ws.getCell(rowNumber, 4).value = dayBonus || null;
+          ws.getCell(rowNumber, 5).value = day;
+
+          ws.getCell(rowNumber, 3).numFmt = "[h]:mm";
+          ws.getCell(rowNumber, 4).numFmt = '#,##0';
+
+          for (let col = 1; col <= 5; col += 1) {
+            const cell = ws.getCell(rowNumber, col);
+            cell.border = border;
+            cell.alignment = {
+              horizontal: "center",
+              vertical: "middle",
+              wrapText: true,
+            };
+            cell.font = {
+              name: "Arial",
+              size: 11,
+              bold: (col === 1 || col === 2) && dayShifts.length > 0,
+              color: { argb: "FF111111" },
+            };
+
+            if (col <= 4) {
+              cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFE4C9" } };
+            } else if (isSunday) {
+              cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFD966" } };
+            } else if (isSaturday) {
+              cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF0C9" } };
+            } else {
+              cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFFFF" } };
+            }
+          }
+
+          ws.getRow(rowNumber).height = dayShifts.length > 1 ? 34 : 24;
+        }
+
+        const totalRow = startRow + daysInMonth;
+        ws.getCell(totalRow, 2).value = "CELKEM";
+        ws.getCell(totalRow, 3).value = {
+          formula: `SUM(C${startRow}:C${totalRow - 1})`,
+        };
+        ws.getCell(totalRow, 4).value = {
+          formula: `SUM(D${startRow}:D${totalRow - 1})`,
+        };
+        ws.getCell(totalRow, 3).numFmt = "[h]:mm";
+        ws.getCell(totalRow, 4).numFmt = '#,##0';
+
+        for (let col = 1; col <= 5; col += 1) {
+          const cell = ws.getCell(totalRow, col);
+          cell.border = border;
+          cell.alignment = { horizontal: "center", vertical: "middle" };
+          cell.font = { name: "Arial", size: 11, bold: true, color: { argb: "FF111111" } };
+          if (col >= 2 && col <= 4) {
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFE4C9" } };
+          }
+        }
+
+        ws.getRow(totalRow).height = 27;
+        ws.autoFilter = {
+          from: "A2",
+          to: "E2",
+        };
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob(
+        [buffer],
+        { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
+      );
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `spay-vykaz-${monthKey}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      setShareInfo(
+        usedEmployers.length === 1
+          ? "Hotovo — pracovní výkaz byl stažen jako Excel."
+          : `Hotovo — Excel obsahuje ${usedEmployers.length} listy, jeden pro každého zaměstnavatele.`
+      );
+    } catch (error) {
+      console.error(error);
+      setShareInfo("Excelový výkaz se nepodařilo vytvořit. Zkus to prosím znovu.");
+    }
+  };
+
   const goMonth = (delta) => {
     const next = new Date(year, month + delta, 1);
     setCursor(next);
@@ -2247,6 +2461,25 @@ function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift, onO
           }}
         >
           Export PDF
+        </button>
+
+        <button
+          type="button"
+          onClick={exportWorkReport}
+          style={{
+            gridColumn: "1 / -1",
+            border: `0.5px solid ${C.line}`,
+            background: C.card,
+            color: C.ink,
+            borderRadius: 14,
+            padding: "12px 12px",
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+            fontFamily: FONT,
+          }}
+        >
+          Export pracovního výkazu (.xlsx)
         </button>
       </div>
 
@@ -3217,7 +3450,7 @@ export default function App() {
           <>
             {active === "overview" && <OverviewScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} userName={userName} onOpenSettings={() => setActive("settings")} />}
             {active === "shifts" && <ShiftsScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onAdd={() => { setNewShiftDate(null); setSheet("shift"); }} onStart={() => setSheet("start")} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} refresh={refresh} onOpenSettings={() => setActive("settings")} />}
-            {active === "calendar" && <CalendarScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} onAddShift={(date) => { setNewShiftDate(date); setSheet("shift"); }} onOpenSettings={() => setActive("settings")} />}
+            {active === "calendar" && <CalendarScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} userName={userName} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} onAddShift={(date) => { setNewShiftDate(date); setSheet("shift"); }} onOpenSettings={() => setActive("settings")} />}
             {active === "settings" && <SettingsScreen employers={employers} shiftTypes={shiftTypes} onAddShiftType={() => { setSelectedShiftType(null); setSheet("shiftType"); }} onEditShiftType={(shiftType) => { setSelectedShiftType(shiftType); setSheet("shiftType"); }} onAddEmployer={() => { setSelectedEmployer(null); setSheet("employer"); }} onEditEmployer={(employer) => { setSelectedEmployer(employer); setSheet("employer"); }} onLogout={() => supabase.auth.signOut()} refresh={refresh} session={session} onProfileUpdated={(user) => setSession((prev) => prev ? { ...prev, user } : prev)} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} />}
           </>
         )}
