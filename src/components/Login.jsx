@@ -50,7 +50,17 @@ export default function Login() {
     setLoading(false);
 
     if (authError) {
-      setError(authError.message);
+      const message = (authError.message || "").toLowerCase();
+
+      if (mode === "signIn" && (message.includes("invalid login credentials") || message.includes("invalid credentials"))) {
+        setError("Nesprávné heslo.");
+      } else if (mode === "signIn" && message.includes("email not confirmed")) {
+        setError("Nejdřív potvrď svůj e-mail.");
+      } else if (mode === "signUp" && message.includes("already registered")) {
+        setError("Účet s tímto e-mailem už existuje.");
+      } else {
+        setError("Něco se nepovedlo. Zkus to prosím znovu.");
+      }
     } else if (mode === "signUp") {
       setSuccess("Účet vytvořen. Zkontroluj e-mail a pak se přihlas.");
     }
