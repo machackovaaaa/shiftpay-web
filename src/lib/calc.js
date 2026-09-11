@@ -47,6 +47,19 @@ export function liveElapsedLabel(startedAt) {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
+export function rawDurationLabel(startedAt, endedAt) {
+  const ms = new Date(endedAt) - new Date(startedAt);
+  const totalMin = Math.round(ms / 60000);
+  if (totalMin < 1) {
+    const sec = Math.round(ms / 1000);
+    return `${sec} s`;
+  }
+  if (totalMin < 60) return `${totalMin} min`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m > 0 ? `${h} h ${m} min` : `${h} h`;
+}
+
 export function fmtK(n) {
   return Math.round(n || 0).toLocaleString("cs-CZ");
 }

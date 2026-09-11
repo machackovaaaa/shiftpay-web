@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Sun, Sunset, Moon, Plus, Home, Calendar, Settings as SettingsIcon, Coins, Trash2, LogOut, X, Play, Square } from "lucide-react";
 import { supabase } from "./lib/supabase";
-import { computeHours, computePay, hoursForShift, payForShift, isLiveShift, liveElapsedLabel, fmtK, typeLabel } from "./lib/calc";
+import { computeHours, computePay, hoursForShift, payForShift, isLiveShift, liveElapsedLabel, rawDurationLabel, fmtK, typeLabel } from "./lib/calc";
 import Login from "./components/Login";
 
 const C = {
@@ -380,6 +380,9 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, refresh }
             <div style={{ textAlign: "right", flexShrink: 0 }}>
               <p style={{ fontSize: 14, fontWeight: 500, color: C.ink, margin: "0 0 2px" }}>{fmtK(pay)} Kč</p>
               <p style={{ fontSize: 11, color: s.tip > 0 ? C.coralDeep : C.sub, margin: 0 }}>{hours} h{s.tip > 0 ? ` · +${s.tip}` : ""}</p>
+              {s.started_at && s.ended_at && hours === 0 && (
+                <p style={{ fontSize: 10, color: C.sub, margin: "2px 0 0" }}>trvalo {rawDurationLabel(s.started_at, s.ended_at)}, kratší než pauza</p>
+              )}
             </div>
             <button onClick={() => remove(s.id)} aria-label="Smazat směnu" style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={15} color={C.sub} /></button>
           </div>
