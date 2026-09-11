@@ -390,8 +390,7 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName }) {
 
   return (
     <div style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 40 }}>
-      {userName && <p style={{ fontSize: 15, color: C.blue, fontWeight: 600, margin: "12px 20px 0" }}>Hezkou směnu, {userName}</p>}
-      <p style={{ fontSize: 34, fontWeight: 700, color: C.ink, margin: "2px 20px 0", letterSpacing: "-0.02em" }}>Přehled</p>
+      <p style={{ fontSize: 34, fontWeight: 700, color: C.ink, margin: "12px 20px 0", letterSpacing: "-0.02em" }}>Přehled</p>
       <p style={{ fontSize: 15, color: C.sub, margin: "2px 20px 18px", textTransform: "capitalize" }}>{monthLabel}</p>
 
       <div style={{ margin: "0 16px", background: C.card, borderRadius: 16, padding: "20px 20px 22px" }}>
@@ -413,6 +412,11 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName }) {
         </div>
       </div>
 
+      {userName && (
+        <p style={{ fontSize: 15, color: C.ink, fontWeight: 600, margin: "20px 20px 0" }}>
+          Užij si směnu, <span style={{ color: C.blue }}>{userName}</span> 👋
+        </p>
+      )}
       <SectionHeader>Zaměstnavatelé</SectionHeader>
       {perEmployer.length === 0 ? (
         <p style={{ fontSize: 14, color: C.sub, margin: "0 16px", padding: "16px", textAlign: "center", background: C.card, borderRadius: 12 }}>Zatím žádný zaměstnavatel ani směna.</p>
