@@ -1078,8 +1078,12 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
     ? ((workedTotals.hours - previousTotals.hours) / previousTotals.hours) * 100
     : null;
 
+  // Trendy jsou vždy ukotvené k aktuálnímu měsíci, ne k právě vybranému.
+  // Díky tomu po kliknutí na starší měsíc nezmizí novější měsíce z grafu.
+  const trendAnchorDate = new Date(now.getFullYear(), now.getMonth(), 1);
+
   const trendMonths = Array.from({ length: 6 }, (_, index) => {
-    const d = new Date(monthDate.getFullYear(), monthDate.getMonth() - (5 - index), 1);
+    const d = new Date(trendAnchorDate.getFullYear(), trendAnchorDate.getMonth() - (5 - index), 1);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     const totals = monthTotalsForKey(key);
     return {
