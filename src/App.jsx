@@ -474,53 +474,140 @@ function AddEmployerSheet({ userId, onClose, onSaved }) {
   );
 }
 
-function AddShiftTypeSheet({ userId, onClose, onSaved }) {
-  const [name, setName] = useState("");
-  const [start, setStart] = useState("08:00");
-  const [end, setEnd] = useState("16:00");
-  const [pauseMin, setPauseMin] = useState("30");
-  const [surchargePct, setSurchargePct] = useState("0");
-  const [icon, setIcon] = useState("Sun");
+function AddShiftTypeSheet({ userId, onClose, onSaved, shiftType = null }) {
+  const editing = Boolean(shiftType);
+  const [name, setName] = useState(shiftType?.name || "");
+  const [start, setStart] = useState(shiftType?.start_time || "08:00");
+  const [end, setEnd] = useState(shiftType?.end_time || "16:00");
+  const [pauseMin, setPauseMin] = useState(String(shiftType?.pause_min ?? 30));
+  const [surchargePct, setSurchargePct] = useState(String(shiftType?.surcharge_pct ?? 0));
+  const [icon, setIcon] = useState(shiftType?.icon || "Sun");
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
   const submit = async () => {
-    if (!name.trim()) { setError("Zadej název typu směny."); return; }
-    const { error: err } = await supabase.from("shift_types").insert({
-      user_id: userId, name: name.trim(), start_time: start, end_time: end,
-      pause_min: Number(pauseMin) || 0, surcharge_pct: Number(surchargePct) || 0, icon,
-    });
-    if (err) { setError(err.message); return; }
-    onSaved(); onClose();
+    if (!name.trim()) {
+      setError("Zadej název typu směny.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    const payload = {
+      name: name.trim(),
+      start_time: start,
+      end_time: end,
+      pause_min: Number(pauseMin) || 0,
+      surcharge_pct: Number(surchargePct) || 0,
+      icon,
+    };
+
+    let result;
+    if (editing) {
+      result = await supabase
+        .from("shift_types")
+        .update(payload)
+        .eq("id", shiftType.id);
+    } else {
+      result = await supabase
+        .from("shift_types")
+        .insert({
+          user_id: userId,
+          ...payload,
+        });
+    }
+
+    setSaving(false);
+
+    if (result.error) {
+      setError(result.error.message);
+      return;
+    }
+
+    await onSaved();
+    onClose();
   };
+
   return (
-    <Sheet title="Nový typ směny" onClose={onClose}>
-      <Field label="Název"><input style={inputStyle} placeholder="např. Víkendová" value={name} onChange={(e) => setName(e.target.value)} /></Field>
+    <Sheet title={editing ? "Upravit typ směny" : "Nový typ směny"} onClose={onClose}>
+      <Field label="Název">
+        <input
+          style={inputStyle}
+          placeholder="např. Víkendová"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </Field>
+
       <div style={{ display: "flex", gap: 10 }}>
-        <div style={{ flex: 1 }}><Field label="Začátek"><input type="time" style={inputStyle} value={start} onChange={(e) => setStart(e.target.value)} /></Field></div>
-        <div style={{ flex: 1 }}><Field label="Konec"><input type="time" style={inputStyle} value={end} onChange={(e) => setEnd(e.target.value)} /></Field></div>
+        <div style={{ flex: 1 }}>
+          <Field label="Začátek">
+            <input type="time" style={inputStyle} value={start} onChange={(e) => setStart(e.target.value)} />
+          </Field>
+        </div>
+        <div style={{ flex: 1 }}>
+          <Field label="Konec">
+            <input type="time" style={inputStyle} value={end} onChange={(e) => setEnd(e.target.value)} />
+          </Field>
+        </div>
       </div>
+
       <div style={{ display: "flex", gap: 10 }}>
-        <div style={{ flex: 1 }}><Field label="Pauza (min)"><input type="number" min="0" style={inputStyle} value={pauseMin} onChange={(e) => setPauseMin(e.target.value)} /></Field></div>
-        <div style={{ flex: 1 }}><Field label="Příplatek (%)"><input type="number" min="0" style={inputStyle} value={surchargePct} onChange={(e) => setSurchargePct(e.target.value)} /></Field></div>
+        <div style={{ flex: 1 }}>
+          <Field label="Pauza (min)">
+            <input type="number" min="0" style={inputStyle} value={pauseMin} onChange={(e) => setPauseMin(e.target.value)} />
+          </Field>
+        </div>
+        <div style={{ flex: 1 }}>
+          <Field label="Příplatek (%)">
+            <input type="number" min="0" style={inputStyle} value={surchargePct} onChange={(e) => setSurchargePct(e.target.value)} />
+          </Field>
+        </div>
       </div>
-      <Field label="Ikona">
+
+      <Field label="Barva typu směny">
         <div style={{ display: "flex", gap: 8 }}>
           {Object.keys(ICONS).map((name2) => {
-            const Ic = ICONS[name2]; const isSel = icon === name2;
+            const isSel = icon === name2;
             return (
-              <button key={name2} onClick={() => setIcon(name2)} aria-label={name2}
-                style={{ width: 40, height: 40, borderRadius: 12, cursor: "pointer", border: isSel ? `1.5px solid ${C.blue}` : `0.5px solid ${C.line}`, background: isSel ? "var(--sp-blue-soft)" : C.card }}>
-                <Ic size={17} color={isSel ? C.blue : C.sub} />
+              <button
+                key={name2}
+                onClick={() => setIcon(name2)}
+                aria-label={name2}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  cursor: "pointer",
+                  border: isSel ? `1.5px solid ${C.blue}` : `0.5px solid ${C.line}`,
+                  background: isSel ? "var(--sp-blue-soft)" : C.card,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <div
+                  style={{
+                    width: 4,
+                    height: 24,
+                    borderRadius: 4,
+                    background: ICON_COLORS[name2] || C.blue,
+                  }}
+                />
               </button>
             );
           })}
         </div>
       </Field>
+
       <ErrorText>{error}</ErrorText>
-      <PrimaryButton onClick={submit}>Uložit typ směny</PrimaryButton>
+      <PrimaryButton onClick={submit} disabled={saving}>
+        {saving ? "Ukládám…" : editing ? "Uložit změny" : "Uložit typ směny"}
+      </PrimaryButton>
     </Sheet>
   );
 }
-
 
 function EditShiftSheet({ shift, userId, employers, shiftTypes, onClose, onSaved }) {
   const [date, setDate] = useState(shift.shift_date || "");
@@ -1589,7 +1676,7 @@ function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift, onO
   );
 }
 
-function SettingsScreen({ employers, shiftTypes, onAddShiftType, onAddEmployer, onLogout, refresh, session, onProfileUpdated, darkMode, onToggleDarkMode }) {
+function SettingsScreen({ employers, shiftTypes, onAddShiftType, onEditShiftType, onAddEmployer, onLogout, refresh, session, onProfileUpdated, darkMode, onToggleDarkMode }) {
   const [name, setName] = useState(session?.user?.user_metadata?.full_name || "");
   const [savingName, setSavingName] = useState(false);
   const [nameMessage, setNameMessage] = useState("");
@@ -1721,13 +1808,45 @@ function SettingsScreen({ employers, shiftTypes, onAddShiftType, onAddEmployer, 
       <GroupedList>
         {shiftTypes.map((t, i) => {
           return (
-            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", borderBottom: i < shiftTypes.length - 1 ? `0.5px solid ${C.line}` : "none" }}>
+            <div
+              key={t.id}
+              onClick={() => onEditShiftType(t)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "11px 14px",
+                borderBottom: i < shiftTypes.length - 1 ? `0.5px solid ${C.line}` : "none",
+                cursor: "pointer",
+              }}
+            >
               <div style={{ width: 4, minHeight: 42, alignSelf: "stretch", borderRadius: 4, background: ICON_COLORS[t.icon] || C.blue, flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: 15, color: C.ink, margin: 0 }}>{t.name}</p>
                 <p style={{ fontSize: 12, color: C.sub, margin: "1px 0 0" }}>{t.start_time}–{t.end_time} · pauza {t.pause_min} min{t.surcharge_pct ? ` · +${t.surcharge_pct}%` : ""}</p>
               </div>
-              <button onClick={() => removeShiftType(t.id)} aria-label="Smazat typ směny" style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={15} color={C.line} /></button>
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEditShiftType(t);
+                }}
+                aria-label="Upravit typ směny"
+                style={{ background: "none", border: "none", cursor: "pointer", padding: 5 }}
+              >
+                <Pencil size={15} color={C.sub} />
+              </button>
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeShiftType(t.id);
+                }}
+                aria-label="Smazat typ směny"
+                style={{ background: "none", border: "none", cursor: "pointer", padding: 5 }}
+              >
+                <Trash2 size={15} color={C.line} />
+              </button>
             </div>
           );
         })}
@@ -1789,6 +1908,93 @@ function TabBar({ active, setActive }) {
   );
 }
 
+
+function PasswordResetScreen({ onDone }) {
+  const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setError("");
+
+    if (password.length < 6) {
+      setError("Heslo musí mít alespoň 6 znaků.");
+      return;
+    }
+
+    if (password !== password2) {
+      setError("Hesla se neshodují.");
+      return;
+    }
+
+    setSaving(true);
+
+    const { error: updateError } = await supabase.auth.updateUser({
+      password,
+    });
+
+    setSaving(false);
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
+    window.history.replaceState({}, document.title, window.location.pathname);
+    onDone();
+  };
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: C.bg,
+        color: C.ink,
+        fontFamily: FONT,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+      }}
+    >
+      <div style={{ width: "100%", maxWidth: 360 }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <SpayBadge />
+          <p style={{ fontSize: 28, fontWeight: 700, margin: "20px 0 5px", letterSpacing: "-0.02em" }}>
+            Nové heslo
+          </p>
+          <p style={{ fontSize: 14, color: C.sub, margin: 0 }}>
+            Nastav si nové heslo ke svému účtu.
+          </p>
+        </div>
+
+        <div style={{ background: C.card, borderRadius: 14, overflow: "hidden", marginBottom: 14 }}>
+          <input
+            type="password"
+            placeholder="Nové heslo"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={{ ...inputStyle, border: "none", borderBottom: `0.5px solid ${C.line}`, borderRadius: 0 }}
+          />
+          <input
+            type="password"
+            placeholder="Zopakuj nové heslo"
+            value={password2}
+            onChange={(e) => setPassword2(e.target.value)}
+            style={{ ...inputStyle, border: "none", borderRadius: 0 }}
+          />
+        </div>
+
+        <ErrorText>{error}</ErrorText>
+        <PrimaryButton onClick={save} disabled={saving}>
+          {saving ? "Ukládám…" : "Nastavit nové heslo"}
+        </PrimaryButton>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(undefined);
   const [darkMode, setDarkMode] = useState(() => {
@@ -1801,13 +2007,20 @@ export default function App() {
     }
   });
   const [active, setActive] = useState("overview");
+  const [passwordRecovery, setPasswordRecovery] = useState(() => new URLSearchParams(window.location.search).get("reset-password") === "1");
   const [sheet, setSheet] = useState(null);
   const [selectedShift, setSelectedShift] = useState(null);
+  const [selectedShiftType, setSelectedShiftType] = useState(null);
   const [newShiftDate, setNewShiftDate] = useState(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    const { data: listener } = supabase.auth.onAuthStateChange((event, s) => {
+      setSession(s);
+      if (event === "PASSWORD_RECOVERY") {
+        setPasswordRecovery(true);
+      }
+    });
     return () => listener.subscription.unsubscribe();
   }, []);
 
@@ -1880,6 +2093,14 @@ export default function App() {
     );
   }
 
+  if (passwordRecovery) {
+    return (
+      <div style={themeVars}>
+        <PasswordResetScreen onDone={() => setPasswordRecovery(false)} />
+      </div>
+    );
+  }
+
   return (
     <div style={{ ...themeVars, minHeight: "100vh", background: C.bg, color: C.ink, fontFamily: FONT, display: "flex", flexDirection: "column" }}>
       <TopBrandBar />
@@ -1892,7 +2113,7 @@ export default function App() {
             {active === "overview" && <OverviewScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} userName={userName} onOpenSettings={() => setActive("settings")} />}
             {active === "shifts" && <ShiftsScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onAdd={() => { setNewShiftDate(null); setSheet("shift"); }} onStart={() => setSheet("start")} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} refresh={refresh} onOpenSettings={() => setActive("settings")} />}
             {active === "calendar" && <CalendarScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} onAddShift={(date) => { setNewShiftDate(date); setSheet("shift"); }} onOpenSettings={() => setActive("settings")} />}
-            {active === "settings" && <SettingsScreen employers={employers} shiftTypes={shiftTypes} onAddShiftType={() => setSheet("shiftType")} onAddEmployer={() => setSheet("employer")} onLogout={() => supabase.auth.signOut()} refresh={refresh} session={session} onProfileUpdated={(user) => setSession((prev) => prev ? { ...prev, user } : prev)} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} />}
+            {active === "settings" && <SettingsScreen employers={employers} shiftTypes={shiftTypes} onAddShiftType={() => { setSelectedShiftType(null); setSheet("shiftType"); }} onEditShiftType={(shiftType) => { setSelectedShiftType(shiftType); setSheet("shiftType"); }} onAddEmployer={() => setSheet("employer")} onLogout={() => supabase.auth.signOut()} refresh={refresh} session={session} onProfileUpdated={(user) => setSession((prev) => prev ? { ...prev, user } : prev)} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} />}
           </>
         )}
       </div>
@@ -1901,7 +2122,7 @@ export default function App() {
       {sheet === "editShift" && selectedShift && <EditShiftSheet shift={selectedShift} userId={userId} employers={employers} shiftTypes={shiftTypes} onClose={() => { setSheet(null); setSelectedShift(null); }} onSaved={refresh} />}
       {sheet === "start" && <StartShiftSheet userId={userId} employers={employers} shiftTypes={shiftTypes} onClose={() => setSheet(null)} onSaved={refresh} />}
       {sheet === "employer" && <AddEmployerSheet userId={userId} onClose={() => setSheet(null)} onSaved={refresh} />}
-      {sheet === "shiftType" && <AddShiftTypeSheet userId={userId} onClose={() => setSheet(null)} onSaved={refresh} />}
+      {sheet === "shiftType" && <AddShiftTypeSheet userId={userId} shiftType={selectedShiftType} onClose={() => { setSheet(null); setSelectedShiftType(null); }} onSaved={refresh} />}
     </div>
   );
 }
