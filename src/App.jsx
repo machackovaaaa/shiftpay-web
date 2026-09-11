@@ -1526,6 +1526,78 @@ function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift, onO
       });
 
   const selectedShifts = shiftsForDate(selectedDate);
+  const monthShifts = shifts
+    .filter((s) => s.shift_date?.startsWith(monthKey) && !isLiveShift(s))
+    .sort((a, b) => {
+      const byDate = a.shift_date.localeCompare(b.shift_date);
+      if (byDate !== 0) return byDate;
+      const aType = shiftTypes.find((t) => t.id === a.shift_type_id);
+      const bType = shiftTypes.find((t) => t.id === b.shift_type_id);
+      const aResolved = resolvedShiftType(a, aType);
+      const bResolved = resolvedShiftType(b, bType);
+      return (aResolved?.start_time || "").localeCompare(bResolved?.start_time || "");
+    });
+  const [shareInfo, setShareInfo] = useState("");
+
+  const scheduleTextForMonth = () => {
+    if (monthShifts.length === 0) {
+      return `Spay – Rozvrh na ${monthLabel}\n\nV tomto měsíci zatím nemáš žádné směny.`;
+    }
+
+    const lines = [`Spay – Rozvrh na ${monthLabel}`, ""];
+
+    monthShifts.forEach((s) => {
+      const emp = employers.find((e) => e.id === s.employer_id);
+      const st = shiftTypes.find((t) => t.id === s.shift_type_id);
+      if (!emp || !st) return;
+      const effectiveType = resolvedShiftType(s, st);
+      const statusMeta = shiftStatusMeta(s.status || "worked");
+      const dateLabel = new Date(s.shift_date + "T00:00:00").toLocaleDateString("cs-CZ", {
+        weekday: "short",
+        day: "numeric",
+        month: "numeric",
+      });
+      const noteText = s.note ? ` · ${s.note}` : "";
+      lines.push(`${dateLabel} · ${emp.name} · ${effectiveType.start_time}–${effectiveType.end_time} · ${statusMeta.label}${noteText}`);
+    });
+
+    return lines.join("\n");
+  };
+
+  const shareSchedule = async () => {
+    const textToShare = scheduleTextForMonth();
+    setShareInfo("");
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `Spay – Rozvrh na ${monthLabel}`,
+          text: textToShare,
+        });
+        setShareInfo("Rozvrh nasdílen.");
+        return;
+      }
+
+      await navigator.clipboard.writeText(textToShare);
+      setShareInfo("Rozvrh zkopírován. Teď ho můžeš vložit třeba do zprávy.");
+    } catch {
+      setShareInfo("Sdílení se nepovedlo. Zkus export.");
+    }
+  };
+
+  const exportSchedule = () => {
+    const textToExport = scheduleTextForMonth();
+    const blob = new Blob([textToExport], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `spay-rozvrh-${monthKey}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setShareInfo("Rozvrh byl stažen jako .txt");
+  };
 
   const goMonth = (delta) => {
     const next = new Date(year, month + delta, 1);
@@ -1620,6 +1692,50 @@ function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift, onO
           })}
         </div>
       </div>
+
+      <div style={{ margin: "12px 16px 0", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <button
+          type="button"
+          onClick={shareSchedule}
+          style={{
+            border: "none",
+            background: "var(--sp-blue-soft)",
+            color: C.blue,
+            borderRadius: 14,
+            padding: "12px 12px",
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+            fontFamily: FONT,
+          }}
+        >
+          Sdílet rozvrh
+        </button>
+
+        <button
+          type="button"
+          onClick={exportSchedule}
+          style={{
+            border: `0.5px solid ${C.line}`,
+            background: C.card,
+            color: C.ink,
+            borderRadius: 14,
+            padding: "12px 12px",
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+            fontFamily: FONT,
+          }}
+        >
+          Export .txt
+        </button>
+      </div>
+
+      {shareInfo && (
+        <p style={{ margin: "10px 18px 0", fontSize: 12, color: C.sub }}>
+          {shareInfo}
+        </p>
+      )}
 
       <div style={{ margin: "16px 16px 0" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
