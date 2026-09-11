@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Sun, Sunset, Moon, Clock, Plus, Home, Calendar, Settings as SettingsIcon, Coins, Trash2, LogOut, X, Play, Square, ChevronRight, Briefcase, Megaphone, Martini, UtensilsCrossed, Coffee, ShoppingBag, Truck, Wrench } from "lucide-react";
+import { Sun, Sunset, Moon, Clock, Plus, Home, Calendar, Settings as SettingsIcon, Coins, Trash2, LogOut, X, Play, Square, ChevronRight, Briefcase, Megaphone, Martini, UtensilsCrossed, Coffee, ShoppingBag, Truck, Wrench, Copy, Pencil } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import { computeHours, computePay, hoursForShift, payForShift, effectivePauseMin, isLiveShift, liveElapsedLabel, rawDurationLabel, fmtK, typeLabel } from "./lib/calc";
 import Login from "./components/Login";
@@ -20,6 +20,17 @@ const DEFAULT_SHIFT_TYPES = [
   { name: "Odpolední", start_time: "14:00", end_time: "22:00", pause_min: 30, surcharge_pct: 0, icon: "Sunset" },
   { name: "Noční", start_time: "22:00", end_time: "06:00", pause_min: 45, surcharge_pct: 15, icon: "Moon" },
 ];
+
+const SHIFT_STATUSES = [
+  { id: "planned", label: "Plánovaná", color: C.blue, bg: "#E8F1FF" },
+  { id: "worked", label: "Odpracovaná", color: C.green, bg: "#E9F9ED" },
+  { id: "cancelled", label: "Zrušená", color: C.red, bg: "#FFE9E7" },
+];
+
+function shiftStatusMeta(status) {
+  return SHIFT_STATUSES.find((s) => s.id === status) || SHIFT_STATUSES[1];
+}
+
 
 const inputStyle = { width: "100%", boxSizing: "border-box", border: `0.5px solid ${C.line}`, borderRadius: 10, padding: "11px 12px", fontSize: 15, fontFamily: FONT, color: C.ink, background: C.card, outline: "none" };
 
@@ -130,6 +141,8 @@ function AddShiftSheet({ userId, employers, shiftTypes, onClose, onSaved }) {
   const [shiftTypeId, setShiftTypeId] = useState(shiftTypes[0]?.id || "");
   const [tip, setTip] = useState("");
   const [pauseMin, setPauseMin] = useState(null);
+  const [status, setStatus] = useState("worked");
+  const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const employer = employers.find((e) => e.id === employerId);
   const shiftType = shiftTypes.find((s) => s.id === shiftTypeId);
@@ -142,6 +155,8 @@ function AddShiftSheet({ userId, employers, shiftTypes, onClose, onSaved }) {
     const { error: err } = await supabase.from("shifts").insert({
       user_id: userId, employer_id: employerId, shift_type_id: shiftTypeId, shift_date: date, tip: Number(tip) || 0,
       pause_override_min: effectivePause,
+      status,
+      note: note.trim() || null,
     });
     if (err) { setError(err.message); return; }
     onSaved();
@@ -176,6 +191,14 @@ function AddShiftSheet({ userId, employers, shiftTypes, onClose, onSaved }) {
       {employer?.track_tips !== false && (
         <Field label="Dýška (Kč, nepovinné)"><input type="number" min="0" style={inputStyle} value={tip} onChange={(e) => setTip(e.target.value)} /></Field>
       )}
+      <Field label="Stav směny">
+        <select style={inputStyle} value={status} onChange={(e) => setStatus(e.target.value)}>
+          {SHIFT_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+      </Field>
+      <Field label="Poznámka (nepovinné)">
+        <textarea style={{ ...inputStyle, minHeight: 82, resize: "vertical" }} placeholder="Např. záskok za kolegu" value={note} onChange={(e) => setNote(e.target.value)} />
+      </Field>
       {shiftType && employer && (
         <div style={{ background: C.card, borderRadius: 10, padding: "10px 14px", marginBottom: 6, display: "flex", justifyContent: "space-between" }}>
           <span style={{ fontSize: 13, color: C.sub }}>{previewHours} h po odečtení pauzy</span>
@@ -192,6 +215,8 @@ function StartShiftSheet({ userId, employers, shiftTypes, onClose, onSaved }) {
   const [employerId, setEmployerId] = useState(employers[0]?.id || "");
   const [shiftTypeId, setShiftTypeId] = useState(shiftTypes[0]?.id || "");
   const [pauseMin, setPauseMin] = useState(null);
+  const [status, setStatus] = useState("worked");
+  const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const shiftType = shiftTypes.find((s) => s.id === shiftTypeId);
   const effectivePause = pauseMin !== null ? pauseMin : (shiftType?.pause_min || 0);
@@ -368,6 +393,159 @@ function AddShiftTypeSheet({ userId, onClose, onSaved }) {
   );
 }
 
+
+function EditShiftSheet({ shift, userId, employers, shiftTypes, onClose, onSaved }) {
+  const [date, setDate] = useState(shift.shift_date || "");
+  const [employerId, setEmployerId] = useState(shift.employer_id || employers[0]?.id || "");
+  const [shiftTypeId, setShiftTypeId] = useState(shift.shift_type_id || shiftTypes[0]?.id || "");
+  const [tip, setTip] = useState(String(shift.tip ?? 0));
+  const [pauseMin, setPauseMin] = useState(shift.pause_override_min ?? "");
+  const [status, setStatus] = useState(shift.status || "worked");
+  const [note, setNote] = useState(shift.note || "");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const employer = employers.find((e) => e.id === employerId);
+  const shiftType = shiftTypes.find((s) => s.id === shiftTypeId);
+  const effectivePause = pauseMin === "" ? (shiftType?.pause_min || 0) : Number(pauseMin);
+
+  const save = async () => {
+    if (!date || !employerId || !shiftTypeId) {
+      setError("Vyplň datum, zaměstnavatele a typ směny.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    const { error: err } = await supabase
+      .from("shifts")
+      .update({
+        employer_id: employerId,
+        shift_type_id: shiftTypeId,
+        shift_date: date,
+        tip: Number(tip) || 0,
+        pause_override_min: effectivePause,
+        status,
+        note: note.trim() || null,
+      })
+      .eq("id", shift.id);
+
+    setSaving(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    await onSaved();
+    onClose();
+  };
+
+  const duplicate = async () => {
+    setSaving(true);
+    setError("");
+
+    const d = new Date((shift.shift_date || date) + "T00:00:00");
+    d.setDate(d.getDate() + 1);
+    const nextDate = d.toISOString().slice(0, 10);
+
+    const { error: err } = await supabase.from("shifts").insert({
+      user_id: userId,
+      employer_id: employerId,
+      shift_type_id: shiftTypeId,
+      shift_date: nextDate,
+      tip: Number(tip) || 0,
+      pause_override_min: effectivePause,
+      status: "planned",
+      note: note.trim() || null,
+    });
+
+    setSaving(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    await onSaved();
+    onClose();
+  };
+
+  const remove = async () => {
+    if (!window.confirm("Opravdu chceš tuto směnu smazat?")) return;
+    setSaving(true);
+    const { error: err } = await supabase.from("shifts").delete().eq("id", shift.id);
+    setSaving(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    await onSaved();
+    onClose();
+  };
+
+  return (
+    <Sheet title="Upravit směnu" onClose={onClose}>
+      <Field label="Datum">
+        <input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
+      </Field>
+
+      <Field label="Zaměstnavatel">
+        <select style={inputStyle} value={employerId} onChange={(e) => setEmployerId(e.target.value)}>
+          {employers.map((e) => <option key={e.id} value={e.id}>{e.name} ({typeLabel(e.type)})</option>)}
+        </select>
+      </Field>
+
+      <Field label="Typ směny">
+        <select style={inputStyle} value={shiftTypeId} onChange={(e) => { setShiftTypeId(e.target.value); setPauseMin(""); }}>
+          {shiftTypes.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.start_time}–{s.end_time})</option>)}
+        </select>
+      </Field>
+
+      <Field label="Pauza (min)">
+        <input type="number" min="0" style={inputStyle} value={effectivePause} onChange={(e) => setPauseMin(e.target.value)} />
+      </Field>
+
+      {employer?.track_tips !== false && (
+        <Field label="Dýška (Kč)">
+          <input type="number" min="0" style={inputStyle} value={tip} onChange={(e) => setTip(e.target.value)} />
+        </Field>
+      )}
+
+      <Field label="Stav směny">
+        <select style={inputStyle} value={status} onChange={(e) => setStatus(e.target.value)}>
+          {SHIFT_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+      </Field>
+
+      <Field label="Poznámka (nepovinné)">
+        <textarea
+          style={{ ...inputStyle, minHeight: 88, resize: "vertical" }}
+          placeholder="Např. záskok za kolegu"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+      </Field>
+
+      <ErrorText>{error}</ErrorText>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button
+          onClick={duplicate}
+          disabled={saving}
+          style={{ flex: 1, border: "none", borderRadius: 12, padding: "12px 0", background: "#E8F1FF", color: C.blue, fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 6 }}
+        >
+          <Copy size={15} /> Duplikovat
+        </button>
+        <button
+          onClick={remove}
+          disabled={saving}
+          style={{ flex: 1, border: "none", borderRadius: 12, padding: "12px 0", background: "#FFE9E7", color: C.red, fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 6 }}
+        >
+          <Trash2 size={15} /> Smazat
+        </button>
+      </div>
+
+      <PrimaryButton onClick={save} disabled={saving}>{saving ? "Ukládám…" : "Uložit změny"}</PrimaryButton>
+    </Sheet>
+  );
+}
+
 function OverviewScreen({ employers, shiftTypes, shifts, userName }) {
   const now = new Date();
   const monthKey = now.toISOString().slice(0, 7);
@@ -452,8 +630,7 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName }) {
   );
 }
 
-function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, refresh }) {
-  const remove = async (id) => { await supabase.from("shifts").delete().eq("id", id); refresh(); };
+function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit }) {
   const finished = shifts.filter((s) => !isLiveShift(s));
   const sorted = [...finished].sort((a, b) => (a.shift_date < b.shift_date ? 1 : -1));
   return (
@@ -477,24 +654,54 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, refresh }
             const st = shiftTypes.find((t) => t.id === s.shift_type_id);
             if (!emp || !st) return null;
             const Icon = ICONS[st.icon] || Sun;
-            const hours = hoursForShift(s, st); const pay = payForShift(s, emp, st);
+            const hours = hoursForShift(s, st);
+            const pay = payForShift(s, emp, st);
             const dateObj = new Date(s.shift_date + "T00:00:00");
+            const statusMeta = shiftStatusMeta(s.status || "worked");
+
             return (
-              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", borderBottom: i < sorted.length - 1 ? `0.5px solid ${C.line}` : "none" }}>
+              <button
+                key={s.id}
+                onClick={() => onEdit(s)}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "11px 14px",
+                  border: "none",
+                  borderBottom: i < sorted.length - 1 ? `0.5px solid ${C.line}` : "none",
+                  background: C.card,
+                  textAlign: "left",
+                  cursor: "pointer",
+                  fontFamily: FONT,
+                }}
+              >
                 <IconBadge Icon={Icon} color={ICON_COLORS[st.icon] || C.blue} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 15, color: C.ink, margin: 0 }}>{st.name}{s.started_at ? " · živě" : ""}</p>
-                  <p style={{ fontSize: 12, color: C.sub, margin: "1px 0 0" }}>{emp.name} · {typeLabel(emp.type)} · {dateObj.toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric" })}</p>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <p style={{ fontSize: 15, color: C.ink, margin: 0 }}>{st.name}{s.started_at ? " · živě" : ""}</p>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: statusMeta.color, background: statusMeta.bg, borderRadius: 6, padding: "2px 6px" }}>
+                      {statusMeta.label}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 12, color: C.sub, margin: "1px 0 0" }}>
+                    {emp.name} · {typeLabel(emp.type)} · {dateObj.toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric" })}
+                  </p>
+                  {s.note && (
+                    <p style={{ fontSize: 11, color: C.sub, margin: "3px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {s.note}
+                    </p>
+                  )}
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
                   <p style={{ fontSize: 15, color: C.ink, margin: 0 }}>{fmtK(pay)} Kč</p>
-                  <p style={{ fontSize: 12, color: s.tip > 0 ? C.green : C.sub, margin: "1px 0 0" }}>{hours} h{s.tip > 0 ? ` · +${s.tip}` : ""}</p>
-                  {s.started_at && s.ended_at && hours === 0 && (
-                    <p style={{ fontSize: 10, color: C.sub, margin: "2px 0 0" }}>trvalo {rawDurationLabel(s.started_at, s.ended_at)}, kratší než pauza</p>
-                  )}
+                  <p style={{ fontSize: 12, color: s.tip > 0 ? C.green : C.sub, margin: "1px 0 0" }}>
+                    {hours} h{s.tip > 0 ? ` · +${s.tip}` : ""}
+                  </p>
                 </div>
-                <button onClick={() => remove(s.id)} aria-label="Smazat směnu" style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}><Trash2 size={15} color={C.line} /></button>
-              </div>
+                <ChevronRight size={16} color={C.line} />
+              </button>
             );
           })}
         </GroupedList>
@@ -656,6 +863,7 @@ export default function App() {
   const [session, setSession] = useState(undefined);
   const [active, setActive] = useState("overview");
   const [sheet, setSheet] = useState(null);
+  const [selectedShift, setSelectedShift] = useState(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -689,13 +897,14 @@ export default function App() {
         ) : (
           <>
             {active === "overview" && <OverviewScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} userName={userName} />}
-            {active === "shifts" && <ShiftsScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onAdd={() => setSheet("shift")} onStart={() => setSheet("start")} refresh={refresh} />}
+            {active === "shifts" && <ShiftsScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onAdd={() => setSheet("shift")} onStart={() => setSheet("start")} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} />}
             {active === "settings" && <SettingsScreen employers={employers} shiftTypes={shiftTypes} onAddShiftType={() => setSheet("shiftType")} onAddEmployer={() => setSheet("employer")} onLogout={() => supabase.auth.signOut()} refresh={refresh} session={session} onProfileUpdated={(user) => setSession((prev) => prev ? { ...prev, user } : prev)} />}
           </>
         )}
       </div>
       <TabBar active={active} setActive={setActive} />
       {sheet === "shift" && <AddShiftSheet userId={userId} employers={employers} shiftTypes={shiftTypes} onClose={() => setSheet(null)} onSaved={refresh} />}
+      {sheet === "editShift" && selectedShift && <EditShiftSheet shift={selectedShift} userId={userId} employers={employers} shiftTypes={shiftTypes} onClose={() => { setSheet(null); setSelectedShift(null); }} onSaved={refresh} />}
       {sheet === "start" && <StartShiftSheet userId={userId} employers={employers} shiftTypes={shiftTypes} onClose={() => setSheet(null)} onSaved={refresh} />}
       {sheet === "employer" && <AddEmployerSheet userId={userId} onClose={() => setSheet(null)} onSaved={refresh} />}
       {sheet === "shiftType" && <AddShiftTypeSheet userId={userId} onClose={() => setSheet(null)} onSaved={refresh} />}
