@@ -828,40 +828,6 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
         </div>
       </div>
 
-      {upcoming.length > 0 && (
-        <div style={{ margin: "14px 16px 0", background: C.card, borderRadius: 18, overflow: "hidden" }}>
-          <div style={{ padding: "14px 15px 9px" }}>
-            <p style={{ fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 }}>Nejbližší směny</p>
-          </div>
-          {upcoming.map((s, i) => {
-            const emp = employers.find((e) => e.id === s.employer_id);
-            const st = shiftTypes.find((t) => t.id === s.shift_type_id);
-            if (!emp || !st) return null;
-            const effectiveType = resolvedShiftType(s, st);
-            const hours = hoursForShift(s, effectiveType);
-            const pay = payForShift(s, emp, effectiveType);
-            const d = new Date(s.shift_date + "T00:00:00");
-            return (
-              <div key={s.id} style={{ display: "flex", gap: 10, padding: "11px 15px", borderTop: i === 0 ? "none" : `0.5px solid ${C.line}` }}>
-                <div style={{ width: 40, flexShrink: 0 }}>
-                  <p style={{ fontSize: 11, color: C.sub, margin: 0, textTransform: "capitalize" }}>{d.toLocaleDateString("cs-CZ", { weekday: "short" })}</p>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: "2px 0 0" }}>{d.getDate()}. {d.getMonth() + 1}.</p>
-                </div>
-                <div style={{ width: 3, borderRadius: 2, background: emp.icon_color || C.blue, flexShrink: 0 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                    <p style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: 0 }}>{emp.name}</p>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: C.blue, background: "#E8F1FF", borderRadius: 8, padding: "3px 6px", whiteSpace: "nowrap" }}>Plánovaná</span>
-                  </div>
-                  <p style={{ fontSize: 11, color: C.sub, margin: "3px 0 0" }}>
-                    {effectiveType.start_time}–{effectiveType.end_time} · {hours} h · {fmtK(pay)} Kč
-                  </p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
 
       {userName && (
         <p style={{ fontSize: 15, color: C.ink, fontWeight: 700, margin: "20px 20px 0" }}>
@@ -989,98 +955,367 @@ function SwipeableShiftRow({ children, onEdit, onDelete, isLast }) {
 }
 
 function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit, refresh }) {
-  const finished = shifts.filter((s) => !isLiveShift(s));
-  const sorted = [...finished].sort((a, b) => (a.shift_date < b.shift_date ? 1 : -1));
-  return (
-    <div style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 40 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", margin: "12px 20px 18px" }}>
-        <p style={{ fontSize: 34, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: "-0.02em" }}>Směny</p>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={onStart} aria-label="Start směny" style={{ display: "flex", alignItems: "center", gap: 5, height: 32, borderRadius: 16, background: C.blue, border: "none", color: "#fff", cursor: "pointer", padding: "0 12px", fontSize: 13, fontWeight: 600 }}>
-            <Play size={12} fill="#fff" /> Start
-          </button>
-          <button onClick={onAdd} style={{ width: 32, height: 32, borderRadius: 16, background: C.blue, border: "none", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} aria-label="Přidat směnu ručně"><Plus size={17} /></button>
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [employerFilter, setEmployerFilter] = useState("all");
+
+  const today = new Date();
+  const todayKey = today.toISOString().slice(0, 10);
+
+  const mondayOf = (date) => {
+    const d = new Date(date);
+    const day = (d.getDay() + 6) % 7;
+    d.setDate(d.getDate() - day);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+
+  const thisMonday = mondayOf(today);
+  const nextMonday = new Date(thisMonday);
+  nextMonday.setDate(nextMonday.getDate() + 7);
+  const afterNextMonday = new Date(thisMonday);
+  afterNextMonday.setDate(afterNextMonday.getDate() + 14);
+
+  const dateKey = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
+  const allFinished = shifts.filter((s) => !isLiveShift(s));
+
+  const matchesFilters = (s) => {
+    const statusOk = statusFilter === "all" || (s.status || "worked") === statusFilter;
+    const employerOk = employerFilter === "all" || s.employer_id === employerFilter;
+    return statusOk && employerOk;
+  };
+
+  const filtered = allFinished.filter(matchesFilters);
+
+  const thisWeek = filtered
+    .filter((s) => s.shift_date >= dateKey(thisMonday) && s.shift_date < dateKey(nextMonday))
+    .sort((a, b) => a.shift_date.localeCompare(b.shift_date));
+
+  const nextWeek = filtered
+    .filter((s) => s.shift_date >= dateKey(nextMonday) && s.shift_date < dateKey(afterNextMonday))
+    .sort((a, b) => a.shift_date.localeCompare(b.shift_date));
+
+  const older = filtered
+    .filter((s) => s.shift_date < dateKey(thisMonday))
+    .sort((a, b) => b.shift_date.localeCompare(a.shift_date));
+
+  const future = filtered
+    .filter((s) => s.shift_date >= todayKey && (s.status || "worked") === "planned")
+    .sort((a, b) => a.shift_date.localeCompare(b.shift_date));
+
+  const nextShift = future[0] || null;
+
+  const statusCounts = {
+    all: allFinished.length,
+    planned: allFinished.filter((s) => s.status === "planned").length,
+    worked: allFinished.filter((s) => (s.status || "worked") === "worked").length,
+    cancelled: allFinished.filter((s) => s.status === "cancelled").length,
+  };
+
+  const sectionSummary = (items) => {
+    let hours = 0;
+    let total = 0;
+    items.forEach((s) => {
+      const emp = employers.find((e) => e.id === s.employer_id);
+      const st = shiftTypes.find((t) => t.id === s.shift_type_id);
+      if (!emp || !st) return;
+      const effectiveType = resolvedShiftType(s, st);
+      hours += hoursForShift(s, effectiveType);
+      total += payForShift(s, emp, effectiveType) + (Number(s.tip) || 0);
+    });
+    return `${items.length} ${items.length === 1 ? "směna" : items.length >= 2 && items.length <= 4 ? "směny" : "směn"} · ${Math.round(hours * 10) / 10} h · ${fmtK(total)} Kč`;
+  };
+
+  const renderShift = (s, i, items) => {
+    const emp = employers.find((e) => e.id === s.employer_id);
+    const st = shiftTypes.find((t) => t.id === s.shift_type_id);
+    if (!emp || !st) return null;
+
+    const effectiveType = resolvedShiftType(s, st);
+    const hours = hoursForShift(s, effectiveType);
+    const pay = payForShift(s, emp, effectiveType);
+    const statusMeta = shiftStatusMeta(s.status || "worked");
+    const dateObj = new Date(s.shift_date + "T00:00:00");
+
+    return (
+      <SwipeableShiftRow
+        key={s.id}
+        isLast={i === items.length - 1}
+        onEdit={() => onEdit(s)}
+        onDelete={async () => {
+          await supabase.from("shifts").delete().eq("id", s.id);
+          await refresh();
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "12px 14px",
+            background: C.card,
+            cursor: "pointer",
+            fontFamily: FONT,
+            boxSizing: "border-box",
+          }}
+        >
+          <div style={{ width: 42, flexShrink: 0 }}>
+            <p style={{ fontSize: 11, color: C.ink, margin: 0, fontWeight: 600, textTransform: "capitalize" }}>
+              {dateObj.toLocaleDateString("cs-CZ", { weekday: "short" })}
+            </p>
+            <p style={{ fontSize: 11, color: C.sub, margin: "2px 0 0" }}>
+              {dateObj.getDate()}. {dateObj.getMonth() + 1}.
+            </p>
+          </div>
+
+          <div
+            style={{
+              width: 4,
+              alignSelf: "stretch",
+              minHeight: 44,
+              borderRadius: 4,
+              background: s.status === "cancelled" ? C.line : (emp.icon_color || C.blue),
+              flexShrink: 0,
+            }}
+          />
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 14, fontWeight: 600, color: C.ink, margin: 0 }}>{emp.name}</p>
+            <p style={{ fontSize: 11, color: C.sub, margin: "3px 0 0" }}>
+              {effectiveType.start_time}–{effectiveType.end_time} · {typeLabel(emp.type)}
+            </p>
+            {s.note && (
+              <p style={{ fontSize: 10, color: C.sub, margin: "3px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {s.note}
+              </p>
+            )}
+          </div>
+
+          <span
+            style={{
+              fontSize: 9,
+              fontWeight: 700,
+              color: statusMeta.color,
+              background: statusMeta.bg,
+              borderRadius: 8,
+              padding: "3px 7px",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {statusMeta.label}
+          </span>
+
+          <div style={{ textAlign: "right", flexShrink: 0, minWidth: 62 }}>
+            <p style={{ fontSize: 13, color: C.ink, margin: 0 }}>{fmtK(pay + (Number(s.tip) || 0))} Kč</p>
+            <p style={{ fontSize: 11, color: C.sub, margin: "2px 0 0" }}>{Math.round(hours * 10) / 10} h</p>
+          </div>
+
+          <ChevronRight size={15} color={C.line} />
+        </div>
+      </SwipeableShiftRow>
+    );
+  };
+
+  const renderSection = (title, items, summary, extraRight = null) => {
+    if (items.length === 0) return null;
+    return (
+      <div style={{ margin: "18px 16px 0" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+          <p style={{ fontSize: 17, fontWeight: 700, color: C.ink, margin: 0 }}>{title}</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {extraRight}
+            {summary && <p style={{ fontSize: 11, color: C.sub, margin: 0 }}>{summary}</p>}
+          </div>
+        </div>
+        <div style={{ background: C.card, borderRadius: 16, overflow: "hidden" }}>
+          {items.map((s, i) => renderShift(s, i, items))}
         </div>
       </div>
-      <SectionHeader>Historie</SectionHeader>
-      {sorted.length === 0 ? (
-        <p style={{ fontSize: 14, color: C.sub, margin: "0 16px", padding: "16px", textAlign: "center", background: C.card, borderRadius: 12 }}>Zatím žádné směny. Spusť Start při příchodu do práce, nebo přidej ručně přes +.</p>
-      ) : (
-        <GroupedList>
-          {sorted.map((s, i) => {
-            const emp = employers.find((e) => e.id === s.employer_id);
-            const st = shiftTypes.find((t) => t.id === s.shift_type_id);
-            if (!emp || !st) return null;
-            const effectiveType = resolvedShiftType(s, st);
-            const Icon = ICONS[st.icon] || Clock;
-            const hours = hoursForShift(s, effectiveType);
-            const pay = payForShift(s, emp, effectiveType);
-            const dateObj = new Date(s.shift_date + "T00:00:00");
-            const statusMeta = shiftStatusMeta(s.status || "worked");
+    );
+  };
 
-            return (
-              <SwipeableShiftRow
-                key={s.id}
-                isLast={i === sorted.length - 1}
-                onEdit={() => onEdit(s)}
-                onDelete={async () => {
-                  await supabase.from("shifts").delete().eq("id", s.id);
-                  await refresh();
-                }}
-              >
-                <div
-                  style={{
-                    width: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "11px 14px",
-                    background: C.card,
-                    textAlign: "left",
-                    cursor: "pointer",
-                    fontFamily: FONT,
-                    boxSizing: "border-box",
-                  }}
-                >
-                <IconBadge Icon={Icon} color={ICON_COLORS[st.icon] || C.blue} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <p style={{ fontSize: 15, color: C.ink, margin: 0 }}>
-                      {shiftTitle(s, st)}
-                      {s.custom_start_time && s.custom_end_time ? ` · ${s.custom_start_time}–${s.custom_end_time}` : ""}
-                      {s.started_at ? " · živě" : ""}
-                    </p>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: statusMeta.color, background: statusMeta.bg, borderRadius: 6, padding: "2px 6px" }}>
-                      {statusMeta.label}
-                    </span>
-                  </div>
-                  <p style={{ fontSize: 12, color: C.sub, margin: "1px 0 0" }}>
-                    {emp.name} · {typeLabel(emp.type)} · {dateObj.toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric" })}
-                  </p>
-                  {s.note && (
-                    <p style={{ fontSize: 11, color: C.sub, margin: "3px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {s.note}
-                    </p>
-                  )}
-                </div>
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <p style={{ fontSize: 15, color: C.ink, margin: 0 }}>{fmtK(pay)} Kč</p>
-                  <p style={{ fontSize: 12, color: s.tip > 0 ? C.green : C.sub, margin: "1px 0 0" }}>
-                    {hours} h{s.tip > 0 ? ` · +${s.tip}` : ""}
-                  </p>
-                </div>
-                  <ChevronRight size={16} color={C.line} />
-                </div>
-              </SwipeableShiftRow>
-            );
-          })}
-        </GroupedList>
+  const filterChip = (id, label) => {
+    const active = statusFilter === id;
+    return (
+      <button
+        onClick={() => setStatusFilter(id)}
+        style={{
+          border: "none",
+          borderRadius: 16,
+          padding: "8px 11px",
+          background: active ? "#EAF3FF" : C.card,
+          color: active ? C.blue : C.ink,
+          fontSize: 11,
+          fontWeight: active ? 700 : 500,
+          cursor: "pointer",
+          fontFamily: FONT,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label} ({statusCounts[id]})
+      </button>
+    );
+  };
+
+  return (
+    <div style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 40 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", margin: "12px 20px 0", gap: 12 }}>
+        <div>
+          <p style={{ fontSize: 34, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: "-0.025em" }}>Směny</p>
+          <p style={{ fontSize: 12, color: C.sub, margin: "5px 0 0" }}>Spravuj své směny na jednom místě</p>
+        </div>
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={onStart}
+            aria-label="Start směny"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              height: 34,
+              borderRadius: 17,
+              background: C.blue,
+              border: "none",
+              color: "#fff",
+              cursor: "pointer",
+              padding: "0 13px",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            <Play size={12} fill="#fff" /> Start
+          </button>
+          <button
+            onClick={onAdd}
+            style={{ width: 34, height: 34, borderRadius: 17, background: C.blue, border: "none", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            aria-label="Přidat směnu"
+          >
+            <Plus size={17} />
+          </button>
+        </div>
+      </div>
+
+      <div style={{ margin: "16px 16px 0", display: "flex", gap: 7, overflowX: "auto", paddingBottom: 2 }}>
+        {filterChip("all", "Všechny")}
+        {filterChip("planned", "Plánované")}
+        {filterChip("worked", "Odpracované")}
+        {filterChip("cancelled", "Zrušené")}
+      </div>
+
+      <div style={{ margin: "10px 16px 0" }}>
+        <select
+          value={employerFilter}
+          onChange={(e) => setEmployerFilter(e.target.value)}
+          style={{ ...selectStyle, background: C.card, borderRadius: 14, fontSize: 12 }}
+        >
+          <option value="all">Všichni zaměstnavatelé</option>
+          {employers.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+        </select>
+      </div>
+
+      <button
+        onClick={onAdd}
+        style={{
+          margin: "12px 16px 0",
+          width: "calc(100% - 32px)",
+          border: "none",
+          background: C.card,
+          borderRadius: 16,
+          padding: "13px 14px",
+          display: "flex",
+          alignItems: "center",
+          gap: 11,
+          cursor: "pointer",
+          textAlign: "left",
+          fontFamily: FONT,
+        }}
+      >
+        <div style={{ width: 34, height: 34, borderRadius: 12, background: "#EAF3FF", display: "flex", alignItems: "center", justifyContent: "center", color: C.blue }}>
+          <Plus size={18} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: 0 }}>Rychle přidat směnu</p>
+          <p style={{ fontSize: 11, color: C.sub, margin: "3px 0 0" }}>Vyber datum a vytvoř novou směnu</p>
+        </div>
+        <ChevronRight size={16} color={C.sub} />
+      </button>
+
+      {nextShift && (() => {
+        const emp = employers.find((e) => e.id === nextShift.employer_id);
+        const st = shiftTypes.find((t) => t.id === nextShift.shift_type_id);
+        if (!emp || !st) return null;
+        const effectiveType = resolvedShiftType(nextShift, st);
+        const hours = hoursForShift(nextShift, effectiveType);
+        const pay = payForShift(nextShift, emp, effectiveType);
+        const d = new Date(nextShift.shift_date + "T00:00:00");
+        const diffDays = Math.max(0, Math.ceil((d - new Date(todayKey + "T00:00:00")) / 86400000));
+
+        return (
+          <button
+            onClick={() => onEdit(nextShift)}
+            style={{
+              margin: "14px 16px 0",
+              width: "calc(100% - 32px)",
+              border: "1px solid #D9E8FF",
+              background: "#EEF6FF",
+              borderRadius: 18,
+              padding: "15px 16px",
+              textAlign: "left",
+              cursor: "pointer",
+              fontFamily: FONT,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <p style={{ fontSize: 14, fontWeight: 700, color: C.blue, margin: 0 }}>Nejbližší směna</p>
+              <p style={{ fontSize: 11, color: C.sub, margin: 0 }}>{diffDays === 0 ? "dnes" : diffDays === 1 ? "zítra" : `za ${diffDays} dny`}</p>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+              <div style={{ width: 4, alignSelf: "stretch", minHeight: 46, borderRadius: 4, background: emp.icon_color || C.blue }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 }}>{emp.name}</p>
+                <p style={{ fontSize: 11, color: C.sub, margin: "4px 0 0" }}>
+                  {d.toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric", year: "numeric" })} · {effectiveType.start_time}–{effectiveType.end_time} · {typeLabel(emp.type)}
+                </p>
+              </div>
+              <span style={{ fontSize: 9, fontWeight: 700, color: C.blue, background: "#DDEBFF", borderRadius: 8, padding: "3px 7px" }}>Plánovaná</span>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <p style={{ fontSize: 13, color: C.ink, margin: 0 }}>{fmtK(pay + (Number(nextShift.tip) || 0))} Kč</p>
+                <p style={{ fontSize: 11, color: C.sub, margin: "2px 0 0" }}>{Math.round(hours * 10) / 10} h</p>
+              </div>
+              <ChevronRight size={15} color={C.blue} />
+            </div>
+          </button>
+        );
+      })()}
+
+      {renderSection("Tento týden", thisWeek, sectionSummary(thisWeek))}
+      {renderSection("Příští týden", nextWeek, sectionSummary(nextWeek))}
+
+      {older.length > 0 && (
+        <div style={{ marginTop: 4 }}>
+          {renderSection("Starší směny", older, null)}
+        </div>
       )}
-      <p style={{ fontSize: 12, color: C.sub, margin: "10px 16px 0", textAlign: "center" }}>pauza se odečítá automaticky podle nastavení směny</p>
+
+      {filtered.length === 0 && (
+        <div style={{ margin: "18px 16px 0", background: C.card, borderRadius: 16, padding: "22px 16px", textAlign: "center" }}>
+          <p style={{ fontSize: 14, color: C.sub, margin: 0 }}>Pro vybrané filtry tu zatím nejsou žádné směny.</p>
+        </div>
+      )}
+
+      <p style={{ fontSize: 11, color: C.sub, margin: "16px 16px 0", textAlign: "center" }}>
+        Pauza se odečítá automaticky podle nastavení směny
+      </p>
     </div>
   );
 }
-
 
 function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift }) {
   const today = new Date();
