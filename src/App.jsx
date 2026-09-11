@@ -1232,20 +1232,6 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
           </div>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
-          <div style={{ textAlign: "right" }}>
-            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>vs. minulý měsíc</p>
-            <p style={{
-              fontSize: 13,
-              fontWeight: 700,
-              color: earningsChange == null ? C.sub : earningsChange >= 0 ? C.green : C.red,
-              margin: "2px 0 0"
-            }}>
-              {earningsChange == null ? "Bez srovnání" : `${earningsChange >= 0 ? "+" : ""}${Math.round(earningsChange)} %`}
-            </p>
-          </div>
-        </div>
-
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 13 }}>
           <div style={{ background: "var(--sp-muted-card)", borderRadius: 13, padding: "11px 12px" }}>
             <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>Vybraný měsíc</p>
@@ -1310,45 +1296,68 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
 
         <div style={{ height: 1, background: C.line, margin: "13px 0 11px" }} />
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-          <div>
-            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>Odpracované hodiny</p>
-            <p style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: "3px 0 0" }}>{Math.round(workedTotals.hours * 10) / 10} h</p>
-          </div>
-          <div style={{ textAlign: "center" }}>
-            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>vs. minulý měsíc</p>
-            <p style={{
-              fontSize: 13,
-              fontWeight: 700,
-              color: hoursChange == null ? C.sub : hoursChange >= 0 ? C.green : C.red,
-              margin: "3px 0 0"
-            }}>
-              {hoursChange == null ? "Bez srovnání" : `${hoursChange >= 0 ? "+" : ""}${Math.round(hoursChange)} %`}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+          <div style={{ background: "var(--sp-muted-card)", borderRadius: 13, padding: "12px" }}>
+            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>Výdělek</p>
+            <p style={{ fontSize: 16, fontWeight: 700, color: C.ink, margin: "4px 0 10px" }}>
+              {fmtK(workedTotals.total)} Kč
             </p>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>vs. stejný měsíc loni</p>
-            <p style={{
-              fontSize: 13,
-              fontWeight: 700,
-              color: yearHoursChange == null ? C.sub : yearHoursChange >= 0 ? C.green : C.red,
-              margin: "3px 0 0"
-            }}>
-              {yearHoursChange == null ? "Bez srovnání" : `${yearHoursChange >= 0 ? "+" : ""}${Math.round(yearHoursChange)} %`}
-            </p>
-          </div>
-        </div>
 
-        <div style={{ marginTop: 10, textAlign: "right" }}>
-          <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>Výdělek vs. stejný měsíc loni</p>
-          <p style={{
-            fontSize: 13,
-            fontWeight: 700,
-            color: yearEarningsChange == null ? C.sub : yearEarningsChange >= 0 ? C.green : C.red,
-            margin: "3px 0 0"
-          }}>
-            {yearEarningsChange == null ? "Bez srovnání" : `${yearEarningsChange >= 0 ? "+" : ""}${Math.round(yearEarningsChange)} %`}
-          </p>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+              <span style={{ fontSize: 10, color: C.sub }}>vs. minulý měsíc</span>
+              <span style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: earningsChange == null ? C.sub : earningsChange >= 0 ? C.green : C.red,
+                whiteSpace: "nowrap"
+              }}>
+                {earningsChange == null ? "—" : `${earningsChange >= 0 ? "+" : ""}${Math.round(earningsChange)} %`}
+              </span>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+              <span style={{ fontSize: 10, color: C.sub }}>vs. stejný měsíc loni</span>
+              <span style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: yearEarningsChange == null ? C.sub : yearEarningsChange >= 0 ? C.green : C.red,
+                whiteSpace: "nowrap"
+              }}>
+                {yearEarningsChange == null ? "—" : `${yearEarningsChange >= 0 ? "+" : ""}${Math.round(yearEarningsChange)} %`}
+              </span>
+            </div>
+          </div>
+
+          <div style={{ background: "var(--sp-muted-card)", borderRadius: 13, padding: "12px" }}>
+            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>Odpracované hodiny</p>
+            <p style={{ fontSize: 16, fontWeight: 700, color: C.ink, margin: "4px 0 10px" }}>
+              {Math.round(workedTotals.hours * 10) / 10} h
+            </p>
+
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+              <span style={{ fontSize: 10, color: C.sub }}>vs. minulý měsíc</span>
+              <span style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: hoursChange == null ? C.sub : hoursChange >= 0 ? C.green : C.red,
+                whiteSpace: "nowrap"
+              }}>
+                {hoursChange == null ? "—" : `${hoursChange >= 0 ? "+" : ""}${Math.round(hoursChange)} %`}
+              </span>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+              <span style={{ fontSize: 10, color: C.sub }}>vs. stejný měsíc loni</span>
+              <span style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: yearHoursChange == null ? C.sub : yearHoursChange >= 0 ? C.green : C.red,
+                whiteSpace: "nowrap"
+              }}>
+                {yearHoursChange == null ? "—" : `${yearHoursChange >= 0 ? "+" : ""}${Math.round(yearHoursChange)} %`}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
