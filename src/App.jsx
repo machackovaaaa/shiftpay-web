@@ -637,8 +637,17 @@ function EditShiftSheet({ shift, userId, employers, shiftTypes, onClose, onSaved
 
 function OverviewScreen({ employers, shiftTypes, shifts, userName }) {
   const now = new Date();
-  const monthKey = now.toISOString().slice(0, 7);
-  const monthLabel = now.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" });
+  const currentMonthKey = now.toISOString().slice(0, 7);
+
+  const availableMonths = Array.from(new Set([
+    currentMonthKey,
+    ...shifts.map((s) => (s.shift_date || "").slice(0, 7)).filter(Boolean),
+  ])).sort((a, b) => b.localeCompare(a));
+
+  const [monthKey, setMonthKey] = useState(currentMonthKey);
+
+  const monthDate = new Date(`${monthKey}-01T00:00:00`);
+  const monthLabel = monthDate.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" });
   const monthShifts = shifts.filter((s) => s.shift_date.startsWith(monthKey) && !isLiveShift(s));
   const workedShifts = monthShifts.filter((s) => (s.status || "worked") === "worked");
   const plannedShifts = monthShifts.filter((s) => s.status === "planned");
@@ -681,7 +690,6 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName }) {
   const monthHours = workedTotals.hours;
 
   const upcoming = [...plannedShifts]
-    .filter((s) => s.shift_date >= now.toISOString().slice(0, 10))
     .sort((a, b) => a.shift_date.localeCompare(b.shift_date))
     .slice(0, 3);
 
@@ -705,18 +713,31 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName }) {
           <p style={{ fontSize: 36, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: "-0.035em", lineHeight: 1.05 }}>Přehled</p>
           <p style={{ fontSize: 13, color: C.sub, margin: "7px 0 0" }}>Máš vše pod kontrolou ☁️</p>
         </div>
-        <div style={{
-          background: "#ECECF0",
-          borderRadius: 18,
-          padding: "8px 12px",
-          fontSize: 12,
-          fontWeight: 600,
-          color: C.ink,
-          textTransform: "capitalize",
-          whiteSpace: "nowrap",
-        }}>
-          {monthLabel}
-        </div>
+        <select
+          value={monthKey}
+          onChange={(e) => setMonthKey(e.target.value)}
+          style={{
+            background: "#ECECF0",
+            border: "none",
+            borderRadius: 18,
+            padding: "8px 12px",
+            fontSize: 12,
+            fontWeight: 600,
+            color: C.ink,
+            textTransform: "capitalize",
+            whiteSpace: "nowrap",
+            outline: "none",
+            fontFamily: FONT,
+            maxWidth: 145,
+          }}
+          aria-label="Vybrat měsíc"
+        >
+          {availableMonths.map((key) => {
+            const d = new Date(`${key}-01T00:00:00`);
+            const label = d.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" });
+            return <option key={key} value={key}>{label}</option>;
+          })}
+        </select>
       </div>
 
       <div style={{
@@ -850,7 +871,84 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName }) {
     </div>
   );
 }
-function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit }) {
+function SwipeableShiftRow({ children, onEdit, onDelete, isLast }) {
+  const [offset, setOffset] = useState(0);
+  const [startX, setStartX] = useState(null);
+  const [dragging, setDragging] = useState(false);
+  const deleteWidth = 86;
+
+  const onTouchStart = (e) => {
+    setStartX(e.touches[0].clientX);
+    setDragging(false);
+  };
+
+  const onTouchMove = (e) => {
+    if (startX == null) return;
+    const dx = e.touches[0].clientX - startX;
+    if (Math.abs(dx) > 6) setDragging(true);
+    const next = Math.max(-deleteWidth, Math.min(0, dx + (offset < 0 ? -deleteWidth : 0)));
+    setOffset(next);
+  };
+
+  const onTouchEnd = () => {
+    if (offset < -42) setOffset(-deleteWidth);
+    else setOffset(0);
+    setStartX(null);
+    setTimeout(() => setDragging(false), 0);
+  };
+
+  return (
+    <div style={{ position: "relative", overflow: "hidden", borderBottom: isLast ? "none" : `0.5px solid ${C.line}` }}>
+      <button
+        onClick={async () => {
+          await onDelete();
+          setOffset(0);
+        }}
+        style={{
+          position: "absolute",
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: deleteWidth,
+          border: "none",
+          background: C.red,
+          color: "#fff",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+        }}
+        aria-label="Smazat směnu"
+      >
+        <Trash2 size={20} />
+      </button>
+
+      <div
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onClick={() => {
+          if (dragging) return;
+          if (offset < 0) {
+            setOffset(0);
+            return;
+          }
+          onEdit();
+        }}
+        style={{
+          transform: `translateX(${offset}px)`,
+          transition: startX == null ? "transform 180ms ease" : "none",
+          background: C.card,
+          touchAction: "pan-y",
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit, refresh }) {
   const finished = shifts.filter((s) => !isLiveShift(s));
   const sorted = [...finished].sort((a, b) => (a.shift_date < b.shift_date ? 1 : -1));
   return (
@@ -881,23 +979,29 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit })
             const statusMeta = shiftStatusMeta(s.status || "worked");
 
             return (
-              <button
+              <SwipeableShiftRow
                 key={s.id}
-                onClick={() => onEdit(s)}
-                style={{
-                  width: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "11px 14px",
-                  border: "none",
-                  borderBottom: i < sorted.length - 1 ? `0.5px solid ${C.line}` : "none",
-                  background: C.card,
-                  textAlign: "left",
-                  cursor: "pointer",
-                  fontFamily: FONT,
+                isLast={i === sorted.length - 1}
+                onEdit={() => onEdit(s)}
+                onDelete={async () => {
+                  await supabase.from("shifts").delete().eq("id", s.id);
+                  await refresh();
                 }}
               >
+                <div
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: "11px 14px",
+                    background: C.card,
+                    textAlign: "left",
+                    cursor: "pointer",
+                    fontFamily: FONT,
+                    boxSizing: "border-box",
+                  }}
+                >
                 <IconBadge Icon={Icon} color={ICON_COLORS[st.icon] || C.blue} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -925,8 +1029,9 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit })
                     {hours} h{s.tip > 0 ? ` · +${s.tip}` : ""}
                   </p>
                 </div>
-                <ChevronRight size={16} color={C.line} />
-              </button>
+                  <ChevronRight size={16} color={C.line} />
+                </div>
+              </SwipeableShiftRow>
             );
           })}
         </GroupedList>
@@ -1122,7 +1227,7 @@ export default function App() {
         ) : (
           <>
             {active === "overview" && <OverviewScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} userName={userName} />}
-            {active === "shifts" && <ShiftsScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onAdd={() => setSheet("shift")} onStart={() => setSheet("start")} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} />}
+            {active === "shifts" && <ShiftsScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onAdd={() => setSheet("shift")} onStart={() => setSheet("start")} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} refresh={refresh} />}
             {active === "settings" && <SettingsScreen employers={employers} shiftTypes={shiftTypes} onAddShiftType={() => setSheet("shiftType")} onAddEmployer={() => setSheet("employer")} onLogout={() => supabase.auth.signOut()} refresh={refresh} session={session} onProfileUpdated={(user) => setSession((prev) => prev ? { ...prev, user } : prev)} />}
           </>
         )}
