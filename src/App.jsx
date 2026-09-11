@@ -3895,7 +3895,14 @@ export default function App() {
     );
   }
 
-  const needsOnboarding = session?.user?.user_metadata?.onboarding_completed === false;
+  const onboardingCompleted = session?.user?.user_metadata?.onboarding_completed === true;
+  const freshAccountWithoutData = !loading && employers.length === 0 && shifts.length === 0;
+  const needsOnboarding =
+    !onboardingCompleted &&
+    (
+      session?.user?.user_metadata?.onboarding_completed === false ||
+      freshAccountWithoutData
+    );
 
   if (needsOnboarding) {
     if (loading) {
