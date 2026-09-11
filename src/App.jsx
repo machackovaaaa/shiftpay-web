@@ -1035,6 +1035,7 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
   const monthShifts = shifts.filter((s) => s.shift_date.startsWith(monthKey) && !isLiveShift(s));
   const workedShifts = monthShifts.filter((s) => (s.status || "worked") === "worked");
   const plannedShifts = monthShifts.filter((s) => s.status === "planned");
+  const cancelledShifts = monthShifts.filter((s) => s.status === "cancelled");
 
   const totalsForShifts = (items) => {
     let wage = 0, tips = 0, bonuses = 0, deductions = 0, hours = 0;
@@ -1055,6 +1056,23 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
   const workedTotals = totalsForShifts(workedShifts);
   const plannedTotals = totalsForShifts(plannedShifts);
   const estimatedTotal = workedTotals.total + plannedTotals.total;
+
+  const cancelledLoss = cancelledShifts.reduce((sum, s) => {
+    const emp = employers.find((e) => e.id === s.employer_id);
+    const st = shiftTypes.find((t) => t.id === s.shift_type_id);
+    if (!emp || !st) return sum;
+
+    const effectiveType = resolvedShiftType(s, st);
+
+    // U zrušené směny počítáme peníze, které by člověk za směnu získal.
+    // Neodečítáme jídlo/pití, protože při zrušené směně k této útratě nedošlo.
+    return (
+      sum +
+      payForShift(s, emp, effectiveType) +
+      (Number(s.tip) || 0) +
+      (Number(s.bonus) || 0)
+    );
+  }, 0);
 
 
   const wageTotal = workedTotals.wage;
@@ -1296,68 +1314,96 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
 
         <div style={{ height: 1, background: C.line, margin: "13px 0 11px" }} />
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-          <div style={{ background: "var(--sp-muted-card)", borderRadius: 13, padding: "12px" }}>
-            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>Výdělek</p>
-            <p style={{ fontSize: 16, fontWeight: 700, color: C.ink, margin: "4px 0 10px" }}>
-              {fmtK(workedTotals.total)} Kč
+        <div style={{ background: "var(--sp-muted-card)", borderRadius: 13, padding: "12px" }}>
+          <p style={{ fontSize: 10, fontWeight: 700, color: C.sub, margin: "0 0 9px" }}>
+            Srovnání
+          </p>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: "7px 12px", alignItems: "center" }}>
+            <span style={{ fontSize: 11, color: C.ink }}>Výdělek</span>
+            <span style={{ fontSize: 10, color: C.sub, textAlign: "right" }}>vs. měsíc</span>
+            <span style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: earningsChange == null ? C.sub : earningsChange >= 0 ? C.green : C.red,
+              textAlign: "right",
+              whiteSpace: "nowrap"
+            }}>
+              {earningsChange == null ? "—" : `${earningsChange >= 0 ? "+" : ""}${Math.round(earningsChange)} %`}
+            </span>
+
+            <span style={{ fontSize: 11, color: C.ink }}></span>
+            <span style={{ fontSize: 10, color: C.sub, textAlign: "right" }}>vs. loni</span>
+            <span style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: yearEarningsChange == null ? C.sub : yearEarningsChange >= 0 ? C.green : C.red,
+              textAlign: "right",
+              whiteSpace: "nowrap"
+            }}>
+              {yearEarningsChange == null ? "—" : `${yearEarningsChange >= 0 ? "+" : ""}${Math.round(yearEarningsChange)} %`}
+            </span>
+
+            <div style={{ gridColumn: "1 / -1", height: 1, background: C.line, margin: "2px 0" }} />
+
+            <span style={{ fontSize: 11, color: C.ink }}>Hodiny</span>
+            <span style={{ fontSize: 10, color: C.sub, textAlign: "right" }}>vs. měsíc</span>
+            <span style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: hoursChange == null ? C.sub : hoursChange >= 0 ? C.green : C.red,
+              textAlign: "right",
+              whiteSpace: "nowrap"
+            }}>
+              {hoursChange == null ? "—" : `${hoursChange >= 0 ? "+" : ""}${Math.round(hoursChange)} %`}
+            </span>
+
+            <span style={{ fontSize: 11, color: C.ink }}></span>
+            <span style={{ fontSize: 10, color: C.sub, textAlign: "right" }}>vs. loni</span>
+            <span style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: yearHoursChange == null ? C.sub : yearHoursChange >= 0 ? C.green : C.red,
+              textAlign: "right",
+              whiteSpace: "nowrap"
+            }}>
+              {yearHoursChange == null ? "—" : `${yearHoursChange >= 0 ? "+" : ""}${Math.round(yearHoursChange)} %`}
+            </span>
+          </div>
+        </div>
+
+        <div
+          style={{
+            marginTop: 8,
+            background: "var(--sp-red-soft)",
+            borderRadius: 13,
+            padding: "12px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div>
+            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>Ztráta</p>
+            <p style={{ fontSize: 11, color: C.sub, margin: "4px 0 0" }}>
+              {cancelledShifts.length === 0
+                ? "Žádné zrušené směny"
+                : `${cancelledShifts.length} ${cancelledShifts.length === 1 ? "zrušená směna" : cancelledShifts.length < 5 ? "zrušené směny" : "zrušených směn"}`}
             </p>
-
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
-              <span style={{ fontSize: 10, color: C.sub }}>vs. minulý měsíc</span>
-              <span style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: earningsChange == null ? C.sub : earningsChange >= 0 ? C.green : C.red,
-                whiteSpace: "nowrap"
-              }}>
-                {earningsChange == null ? "—" : `${earningsChange >= 0 ? "+" : ""}${Math.round(earningsChange)} %`}
-              </span>
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-              <span style={{ fontSize: 10, color: C.sub }}>vs. stejný měsíc loni</span>
-              <span style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: yearEarningsChange == null ? C.sub : yearEarningsChange >= 0 ? C.green : C.red,
-                whiteSpace: "nowrap"
-              }}>
-                {yearEarningsChange == null ? "—" : `${yearEarningsChange >= 0 ? "+" : ""}${Math.round(yearEarningsChange)} %`}
-              </span>
-            </div>
           </div>
 
-          <div style={{ background: "var(--sp-muted-card)", borderRadius: 13, padding: "12px" }}>
-            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>Odpracované hodiny</p>
-            <p style={{ fontSize: 16, fontWeight: 700, color: C.ink, margin: "4px 0 10px" }}>
-              {Math.round(workedTotals.hours * 10) / 10} h
-            </p>
-
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
-              <span style={{ fontSize: 10, color: C.sub }}>vs. minulý měsíc</span>
-              <span style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: hoursChange == null ? C.sub : hoursChange >= 0 ? C.green : C.red,
-                whiteSpace: "nowrap"
-              }}>
-                {hoursChange == null ? "—" : `${hoursChange >= 0 ? "+" : ""}${Math.round(hoursChange)} %`}
-              </span>
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-              <span style={{ fontSize: 10, color: C.sub }}>vs. stejný měsíc loni</span>
-              <span style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: yearHoursChange == null ? C.sub : yearHoursChange >= 0 ? C.green : C.red,
-                whiteSpace: "nowrap"
-              }}>
-                {yearHoursChange == null ? "—" : `${yearHoursChange >= 0 ? "+" : ""}${Math.round(yearHoursChange)} %`}
-              </span>
-            </div>
-          </div>
+          <p
+            style={{
+              fontSize: 18,
+              fontWeight: 700,
+              color: cancelledLoss > 0 ? C.red : C.sub,
+              margin: 0,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {cancelledLoss > 0 ? `−${fmtK(cancelledLoss)} Kč` : "0 Kč"}
+          </p>
         </div>
       </div>
 
