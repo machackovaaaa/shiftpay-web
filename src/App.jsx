@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Sun, Sunset, Moon, Clock, Plus, Home, Calendar, Settings as SettingsIcon, Coins, Trash2, LogOut, X, Play, Square, ChevronRight, Briefcase, Megaphone, Martini, UtensilsCrossed, Coffee, ShoppingBag, Truck, Wrench, Copy, Pencil } from "lucide-react";
+import { Sun, Sunset, Moon, Clock, Plus, Home, Calendar, Settings as SettingsIcon, Coins, Trash2, LogOut, X, Play, Square, ChevronRight, Briefcase, Megaphone, Martini, UtensilsCrossed, Coffee, ShoppingBag, Truck, Wrench, Copy, Pencil, CircleUserRound } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import { computeHours, computePay, hoursForShift, payForShift, effectivePauseMin, isLiveShift, liveElapsedLabel, rawDurationLabel, fmtK, typeLabel } from "./lib/calc";
 import Login from "./components/Login";
@@ -152,10 +152,10 @@ function useShiftPayData(userId) {
   return { employers, shiftTypes, shifts, loading, refresh };
 }
 
-function AddShiftSheet({ userId, employers, shiftTypes, onClose, onSaved }) {
+function AddShiftSheet({ userId, employers, shiftTypes, onClose, onSaved, initialDate }) {
   const today = new Date().toISOString().slice(0, 10);
   const fallbackShiftType = shiftTypes[0];
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState(initialDate || today);
   const [employerId, setEmployerId] = useState(employers[0]?.id || "");
   const [startTime, setStartTime] = useState("08:00");
   const [endTime, setEndTime] = useState("16:00");
@@ -635,7 +635,7 @@ function EditShiftSheet({ shift, userId, employers, shiftTypes, onClose, onSaved
   );
 }
 
-function OverviewScreen({ employers, shiftTypes, shifts, userName }) {
+function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSettings }) {
   const now = new Date();
   const currentMonthKey = now.toISOString().slice(0, 7);
 
@@ -713,31 +713,52 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName }) {
           <p style={{ fontSize: 36, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: "-0.035em", lineHeight: 1.05 }}>Přehled</p>
           <p style={{ fontSize: 13, color: C.sub, margin: "7px 0 0" }}>Máš vše pod kontrolou ☁️</p>
         </div>
-        <select
-          value={monthKey}
-          onChange={(e) => setMonthKey(e.target.value)}
-          style={{
-            background: "#ECECF0",
-            border: "none",
-            borderRadius: 18,
-            padding: "8px 12px",
-            fontSize: 12,
-            fontWeight: 600,
-            color: C.ink,
-            textTransform: "capitalize",
-            whiteSpace: "nowrap",
-            outline: "none",
-            fontFamily: FONT,
-            maxWidth: 145,
-          }}
-          aria-label="Vybrat měsíc"
-        >
-          {availableMonths.map((key) => {
-            const d = new Date(`${key}-01T00:00:00`);
-            const label = d.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" });
-            return <option key={key} value={key}>{label}</option>;
-          })}
-        </select>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <select
+            value={monthKey}
+            onChange={(e) => setMonthKey(e.target.value)}
+            style={{
+              background: "#ECECF0",
+              border: "none",
+              borderRadius: 18,
+              padding: "8px 12px",
+              fontSize: 12,
+              fontWeight: 600,
+              color: C.ink,
+              textTransform: "capitalize",
+              whiteSpace: "nowrap",
+              outline: "none",
+              fontFamily: FONT,
+              maxWidth: 145,
+            }}
+            aria-label="Vybrat měsíc"
+          >
+            {availableMonths.map((key) => {
+              const d = new Date(`${key}-01T00:00:00`);
+              const label = d.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" });
+              return <option key={key} value={key}>{label}</option>;
+            })}
+          </select>
+
+          <button
+            onClick={onOpenSettings}
+            aria-label="Otevřít nastavení účtu"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              border: "none",
+              background: "#ECECF0",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          >
+            <CircleUserRound size={20} color={C.ink} strokeWidth={1.9} />
+          </button>
+        </div>
       </div>
 
       <div style={{
@@ -1042,7 +1063,7 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit, r
 }
 
 
-function CalendarScreen({ employers, shiftTypes, shifts, onEdit }) {
+function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift }) {
   const today = new Date();
   const [cursor, setCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(() => today.toISOString().slice(0, 10));
@@ -1166,9 +1187,29 @@ function CalendarScreen({ employers, shiftTypes, shifts, onEdit }) {
       </div>
 
       <div style={{ margin: "16px 16px 0" }}>
-        <p style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: "0 0 8px" }}>
-          {new Date(`${selectedDate}T00:00:00`).toLocaleDateString("cs-CZ", { weekday: "long", day: "numeric", month: "long" })}
-        </p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: 0 }}>
+            {new Date(`${selectedDate}T00:00:00`).toLocaleDateString("cs-CZ", { weekday: "long", day: "numeric", month: "long" })}
+          </p>
+          <button
+            type="button"
+            onClick={() => onAddShift(selectedDate)}
+            style={{
+              border: "none",
+              background: "#EAF3FF",
+              color: C.blue,
+              borderRadius: 10,
+              padding: "7px 10px",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              fontFamily: FONT,
+              whiteSpace: "nowrap",
+            }}
+          >
+            + Přidat směnu
+          </button>
+        </div>
 
         {selectedShifts.length === 0 ? (
           <div style={{ background: C.card, borderRadius: 16, padding: "18px 16px", textAlign: "center" }}>
@@ -1361,7 +1402,6 @@ function TabBar({ active, setActive }) {
     { id: "overview", label: "Přehled", Icon: Home },
     { id: "shifts", label: "Směny", Icon: Clock },
     { id: "calendar", label: "Kalendář", Icon: Calendar },
-    { id: "settings", label: "Nastavení", Icon: SettingsIcon },
   ];
   return (
     <div style={{ position: "sticky", bottom: 0, display: "flex", borderTop: `0.5px solid ${C.line}`, background: "rgba(242,242,247,0.92)", backdropFilter: "blur(10px)", padding: "8px 0 calc(8px + env(safe-area-inset-bottom))" }}>
@@ -1383,6 +1423,7 @@ export default function App() {
   const [active, setActive] = useState("overview");
   const [sheet, setSheet] = useState(null);
   const [selectedShift, setSelectedShift] = useState(null);
+  const [newShiftDate, setNewShiftDate] = useState(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -1415,15 +1456,15 @@ export default function App() {
           <p style={{ textAlign: "center", color: C.sub, padding: 40 }}>Načítám data…</p>
         ) : (
           <>
-            {active === "overview" && <OverviewScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} userName={userName} />}
-            {active === "shifts" && <ShiftsScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onAdd={() => setSheet("shift")} onStart={() => setSheet("start")} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} refresh={refresh} />}
-            {active === "calendar" && <CalendarScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} />}
+            {active === "overview" && <OverviewScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} userName={userName} onOpenSettings={() => setActive("settings")} />}
+            {active === "shifts" && <ShiftsScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onAdd={() => { setNewShiftDate(null); setSheet("shift"); }} onStart={() => setSheet("start")} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} refresh={refresh} />}
+            {active === "calendar" && <CalendarScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} onAddShift={(date) => { setNewShiftDate(date); setSheet("shift"); }} />}
             {active === "settings" && <SettingsScreen employers={employers} shiftTypes={shiftTypes} onAddShiftType={() => setSheet("shiftType")} onAddEmployer={() => setSheet("employer")} onLogout={() => supabase.auth.signOut()} refresh={refresh} session={session} onProfileUpdated={(user) => setSession((prev) => prev ? { ...prev, user } : prev)} />}
           </>
         )}
       </div>
       <TabBar active={active} setActive={setActive} />
-      {sheet === "shift" && <AddShiftSheet userId={userId} employers={employers} shiftTypes={shiftTypes} onClose={() => setSheet(null)} onSaved={refresh} />}
+      {sheet === "shift" && <AddShiftSheet userId={userId} employers={employers} shiftTypes={shiftTypes} initialDate={newShiftDate} onClose={() => { setSheet(null); setNewShiftDate(null); }} onSaved={refresh} />}
       {sheet === "editShift" && selectedShift && <EditShiftSheet shift={selectedShift} userId={userId} employers={employers} shiftTypes={shiftTypes} onClose={() => { setSheet(null); setSelectedShift(null); }} onSaved={refresh} />}
       {sheet === "start" && <StartShiftSheet userId={userId} employers={employers} shiftTypes={shiftTypes} onClose={() => setSheet(null)} onSaved={refresh} />}
       {sheet === "employer" && <AddEmployerSheet userId={userId} onClose={() => setSheet(null)} onSaved={refresh} />}
