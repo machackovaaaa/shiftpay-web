@@ -1023,9 +1023,14 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
   ])).sort((a, b) => b.localeCompare(a));
 
   const [monthKey, setMonthKey] = useState(currentMonthKey);
+  const [trendYear, setTrendYear] = useState(new Date().getFullYear());
 
   const monthDate = new Date(`${monthKey}-01T00:00:00`);
   const monthLabel = monthDate.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" });
+
+  useEffect(() => {
+    setTrendYear(monthDate.getFullYear());
+  }, [monthKey]);
   const monthShifts = shifts.filter((s) => s.shift_date.startsWith(monthKey) && !isLiveShift(s));
   const workedShifts = monthShifts.filter((s) => (s.status || "worked") === "worked");
   const plannedShifts = monthShifts.filter((s) => s.status === "planned");
@@ -1078,13 +1083,10 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
     ? ((workedTotals.hours - previousTotals.hours) / previousTotals.hours) * 100
     : null;
 
-  // Trendy jsou vždy ukotvené k aktuálnímu měsíci, ne k právě vybranému.
-  // Díky tomu po kliknutí na starší měsíc nezmizí novější měsíce z grafu.
-  const trendAnchorDate = new Date(now.getFullYear(), now.getMonth(), 1);
-
-  const trendMonths = Array.from({ length: 6 }, (_, index) => {
-    const d = new Date(trendAnchorDate.getFullYear(), trendAnchorDate.getMonth() - (5 - index), 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  // Trendy zobrazují celý vybraný rok, takže jde porovnávat i mezi různými roky.
+  const trendMonths = Array.from({ length: 12 }, (_, index) => {
+    const d = new Date(trendYear, index, 1);
+    const key = `${trendYear}-${String(index + 1).padStart(2, "0")}`;
     const totals = monthTotalsForKey(key);
     return {
       key,
@@ -1095,6 +1097,15 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
   });
 
   const trendMax = Math.max(1, ...trendMonths.map((m) => m.total));
+
+  const lastYearKey = `${monthDate.getFullYear() - 1}-${String(monthDate.getMonth() + 1).padStart(2, "0")}`;
+  const lastYearTotals = monthTotalsForKey(lastYearKey);
+  const yearEarningsChange = lastYearTotals.total > 0
+    ? ((workedTotals.total - lastYearTotals.total) / lastYearTotals.total) * 100
+    : null;
+  const yearHoursChange = lastYearTotals.hours > 0
+    ? ((workedTotals.hours - lastYearTotals.hours) / lastYearTotals.hours) * 100
+    : null;
 
   const upcoming = [...plannedShifts]
     .sort((a, b) => a.shift_date.localeCompare(b.shift_date))
@@ -1196,10 +1207,33 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
           <div>
             <p style={{ fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 }}>Trendy</p>
-            <p style={{ fontSize: 11, color: C.sub, margin: "4px 0 0" }}>Porovnání s minulým měsícem</p>
+            <p style={{ fontSize: 11, color: C.sub, margin: "4px 0 0" }}>Porovnání měsíců a roků</p>
           </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => setTrendYear((year) => year - 1)}
+              aria-label="Předchozí rok"
+              style={{ width: 28, height: 28, borderRadius: 9, border: "none", background: "var(--sp-muted-card)", color: C.ink, cursor: "pointer", fontSize: 17 }}
+            >
+              ‹
+            </button>
+            <span style={{ minWidth: 42, textAlign: "center", fontSize: 12, fontWeight: 700, color: C.ink }}>{trendYear}</span>
+            <button
+              type="button"
+              onClick={() => setTrendYear((year) => year + 1)}
+              aria-label="Další rok"
+              style={{ width: 28, height: 28, borderRadius: 9, border: "none", background: "var(--sp-muted-card)", color: C.ink, cursor: "pointer", fontSize: 17 }}
+            >
+              ›
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
           <div style={{ textAlign: "right" }}>
-            <p style={{ fontSize: 11, color: C.sub, margin: 0 }}>Výdělek</p>
+            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>vs. minulý měsíc</p>
             <p style={{
               fontSize: 13,
               fontWeight: 700,
@@ -1211,24 +1245,28 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 13 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 13 }}>
           <div style={{ background: "var(--sp-muted-card)", borderRadius: 13, padding: "11px 12px" }}>
-            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>Tento měsíc</p>
-            <p style={{ fontSize: 17, fontWeight: 700, color: C.ink, margin: "4px 0 0" }}>{fmtK(workedTotals.total)} Kč</p>
+            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>Vybraný měsíc</p>
+            <p style={{ fontSize: 16, fontWeight: 700, color: C.ink, margin: "4px 0 0" }}>{fmtK(workedTotals.total)} Kč</p>
           </div>
           <div style={{ background: "var(--sp-muted-card)", borderRadius: 13, padding: "11px 12px" }}>
-            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>Minulý měsíc</p>
-            <p style={{ fontSize: 17, fontWeight: 700, color: C.ink, margin: "4px 0 0" }}>{fmtK(previousTotals.total)} Kč</p>
+            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>Předchozí měsíc</p>
+            <p style={{ fontSize: 16, fontWeight: 700, color: C.ink, margin: "4px 0 0" }}>{fmtK(previousTotals.total)} Kč</p>
+          </div>
+          <div style={{ background: "var(--sp-muted-card)", borderRadius: 13, padding: "11px 12px" }}>
+            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>Stejný měsíc loni</p>
+            <p style={{ fontSize: 16, fontWeight: 700, color: C.ink, margin: "4px 0 0" }}>{fmtK(lastYearTotals.total)} Kč</p>
           </div>
         </div>
 
         <div style={{ marginTop: 15 }}>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 7, height: 92 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(12, minmax(0, 1fr))", alignItems: "end", gap: 4, height: 96 }}>
             {trendMonths.map((m) => {
               const height = m.total <= 0 ? 5 : Math.max(10, Math.round((m.total / trendMax) * 78));
               const active = m.key === monthKey;
               return (
-                <div key={m.key} style={{ flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", gap: 5 }}>
+                <div key={m.key} style={{ minWidth: 0, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", gap: 5 }}>
                   <button
                     type="button"
                     onClick={() => setMonthKey(m.key)}
@@ -1236,7 +1274,7 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
                     aria-label={`Zobrazit ${m.label}, ${fmtK(m.total)} Kč`}
                     style={{
                       width: "72%",
-                      maxWidth: 30,
+                      maxWidth: 24,
                       height,
                       border: "none",
                       padding: 0,
@@ -1271,12 +1309,12 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
 
         <div style={{ height: 1, background: C.line, margin: "13px 0 11px" }} />
 
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
           <div>
             <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>Odpracované hodiny</p>
             <p style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: "3px 0 0" }}>{Math.round(workedTotals.hours * 10) / 10} h</p>
           </div>
-          <div style={{ textAlign: "right" }}>
+          <div style={{ textAlign: "center" }}>
             <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>vs. minulý měsíc</p>
             <p style={{
               fontSize: 13,
@@ -1287,6 +1325,29 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
               {hoursChange == null ? "Bez srovnání" : `${hoursChange >= 0 ? "+" : ""}${Math.round(hoursChange)} %`}
             </p>
           </div>
+          <div style={{ textAlign: "right" }}>
+            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>vs. stejný měsíc loni</p>
+            <p style={{
+              fontSize: 13,
+              fontWeight: 700,
+              color: yearHoursChange == null ? C.sub : yearHoursChange >= 0 ? C.green : C.red,
+              margin: "3px 0 0"
+            }}>
+              {yearHoursChange == null ? "Bez srovnání" : `${yearHoursChange >= 0 ? "+" : ""}${Math.round(yearHoursChange)} %`}
+            </p>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 10, textAlign: "right" }}>
+          <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>Výdělek vs. stejný měsíc loni</p>
+          <p style={{
+            fontSize: 13,
+            fontWeight: 700,
+            color: yearEarningsChange == null ? C.sub : yearEarningsChange >= 0 ? C.green : C.red,
+            margin: "3px 0 0"
+          }}>
+            {yearEarningsChange == null ? "Bez srovnání" : `${yearEarningsChange >= 0 ? "+" : ""}${Math.round(yearEarningsChange)} %`}
+          </p>
         </div>
       </div>
 
