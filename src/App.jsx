@@ -640,8 +640,29 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName }) {
   const monthKey = now.toISOString().slice(0, 7);
   const monthLabel = now.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" });
   const monthShifts = shifts.filter((s) => s.shift_date.startsWith(monthKey) && !isLiveShift(s));
+  const workedShifts = monthShifts.filter((s) => (s.status || "worked") === "worked");
+  const plannedShifts = monthShifts.filter((s) => s.status === "planned");
+
+  const totalsForShifts = (items) => {
+    let wage = 0, tips = 0, hours = 0;
+    items.forEach((s) => {
+      const emp = employers.find((e) => e.id === s.employer_id);
+      const st = shiftTypes.find((t) => t.id === s.shift_type_id);
+      if (!emp || !st) return;
+      const effectiveType = resolvedShiftType(s, st);
+      wage += payForShift(s, emp, effectiveType);
+      tips += Number(s.tip) || 0;
+      hours += hoursForShift(s, effectiveType);
+    });
+    return { wage, tips, hours, total: wage + tips };
+  };
+
+  const workedTotals = totalsForShifts(workedShifts);
+  const plannedTotals = totalsForShifts(plannedShifts);
+  const estimatedTotal = workedTotals.total + plannedTotals.total;
+
   const perEmployer = employers.map((emp) => {
-    const empShifts = monthShifts.filter((s) => s.employer_id === emp.id);
+    const empShifts = workedShifts.filter((s) => s.employer_id === emp.id);
     let wage = 0, tips = 0, hours = 0;
     empShifts.forEach((s) => {
       const st = shiftTypes.find((t) => t.id === s.shift_type_id);
@@ -678,6 +699,31 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName }) {
           <div>
             <p style={{ fontSize: 12, color: C.sub, margin: "0 0 2px" }}>Hodiny</p>
             <p style={{ fontSize: 16, fontWeight: 600, color: C.ink, margin: 0 }}>{Math.round(monthHours * 10) / 10} h</p>
+          </div>
+        </div>
+      </div>
+
+      <div style={{
+        margin: "12px 16px 0",
+        background: "#EAF3FF",
+        borderRadius: 16,
+        padding: "16px 18px",
+      }}>
+        <p style={{ fontSize: 12, color: C.sub, margin: "0 0 4px" }}>Odhad výplaty do konce měsíce</p>
+        <p style={{ fontSize: 28, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: "-0.02em" }}>
+          {fmtK(estimatedTotal)} Kč
+        </p>
+        <p style={{ fontSize: 12, color: C.sub, margin: "4px 0 12px" }}>
+          Na základě odpracovaných a plánovaných směn
+        </p>
+        <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+          <div>
+            <p style={{ fontSize: 11, color: C.sub, margin: "0 0 2px" }}>Aktuálně vyděláno</p>
+            <p style={{ fontSize: 14, fontWeight: 600, color: C.ink, margin: 0 }}>{fmtK(workedTotals.total)} Kč</p>
+          </div>
+          <div>
+            <p style={{ fontSize: 11, color: C.sub, margin: "0 0 2px" }}>Ještě plánováno</p>
+            <p style={{ fontSize: 14, fontWeight: 600, color: C.blue, margin: 0 }}>{fmtK(plannedTotals.total)} Kč</p>
           </div>
         </div>
       </div>
