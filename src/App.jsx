@@ -500,12 +500,70 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, refresh }
   );
 }
 
-function SettingsScreen({ employers, shiftTypes, onAddShiftType, onAddEmployer, onLogout, refresh }) {
+function SettingsScreen({ employers, shiftTypes, onAddShiftType, onAddEmployer, onLogout, refresh, session, onProfileUpdated }) {
+  const [name, setName] = useState(session?.user?.user_metadata?.full_name || "");
+  const [savingName, setSavingName] = useState(false);
+  const [nameMessage, setNameMessage] = useState("");
+  const [nameError, setNameError] = useState("");
+
+  useEffect(() => {
+    setName(session?.user?.user_metadata?.full_name || "");
+  }, [session?.user?.user_metadata?.full_name]);
+
+  const saveName = async () => {
+    const cleanName = name.trim();
+    if (!cleanName) {
+      setNameError("Napiš jméno, které se má zobrazovat v pozdravu.");
+      setNameMessage("");
+      return;
+    }
+
+    setSavingName(true);
+    setNameError("");
+    setNameMessage("");
+
+    const { data, error } = await supabase.auth.updateUser({
+      data: { full_name: cleanName },
+    });
+
+    setSavingName(false);
+
+    if (error) {
+      setNameError("Jméno se nepodařilo uložit. Zkus to prosím znovu.");
+      return;
+    }
+
+    if (data?.user) onProfileUpdated?.(data.user);
+    setNameMessage("Jméno je uložené.");
+  };
+
   const removeShiftType = async (id) => { await supabase.from("shift_types").delete().eq("id", id); refresh(); };
   const removeEmployer = async (id) => { await supabase.from("employers").delete().eq("id", id); refresh(); };
   return (
     <div style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 40 }}>
       <p style={{ fontSize: 34, fontWeight: 700, color: C.ink, margin: "12px 20px 18px", letterSpacing: "-0.02em" }}>Nastavení</p>
+
+      <SectionHeader>Osobní údaje</SectionHeader>
+      <GroupedList>
+        <div style={{ padding: "14px" }}>
+          <Field label="Tvoje jméno">
+            <input
+              type="text"
+              style={inputStyle}
+              value={name}
+              placeholder="Např. Nikola"
+              onChange={(e) => { setName(e.target.value); setNameMessage(""); setNameError(""); }}
+            />
+          </Field>
+          <p style={{ fontSize: 12, color: C.sub, margin: "-7px 0 12px" }}>Tohle jméno se bude zobrazovat v aplikaci, například v pozdravu.</p>
+          <Field label="E-mail">
+            <input type="email" style={{ ...inputStyle, background: "#F2F2F7", color: C.sub }} value={session?.user?.email || ""} disabled />
+          </Field>
+          <ErrorText>{nameError}</ErrorText>
+          {nameMessage && <p style={{ fontSize: 13, color: C.green, margin: "4px 0 0" }}>{nameMessage}</p>}
+          <PrimaryButton onClick={saveName} disabled={savingName}>{savingName ? "Ukládám…" : "Uložit jméno"}</PrimaryButton>
+        </div>
+      </GroupedList>
 
       <SectionHeader>Typy směn</SectionHeader>
       <GroupedList>
@@ -615,7 +673,7 @@ export default function App() {
           <>
             {active === "overview" && <OverviewScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} userName={userName} />}
             {active === "shifts" && <ShiftsScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onAdd={() => setSheet("shift")} onStart={() => setSheet("start")} refresh={refresh} />}
-            {active === "settings" && <SettingsScreen employers={employers} shiftTypes={shiftTypes} onAddShiftType={() => setSheet("shiftType")} onAddEmployer={() => setSheet("employer")} onLogout={() => supabase.auth.signOut()} refresh={refresh} />}
+            {active === "settings" && <SettingsScreen employers={employers} shiftTypes={shiftTypes} onAddShiftType={() => setSheet("shiftType")} onAddEmployer={() => setSheet("employer")} onLogout={() => supabase.auth.signOut()} refresh={refresh} session={session} onProfileUpdated={(user) => setSession((prev) => prev ? { ...prev, user } : prev)} />}
           </>
         )}
       </div>
