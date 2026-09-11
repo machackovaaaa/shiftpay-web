@@ -1779,57 +1779,8 @@ function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift, onO
     });
   const [shareInfo, setShareInfo] = useState("");
 
-  const scheduleTextForMonth = () => {
-    if (monthShifts.length === 0) {
-      return `Spay – Rozvrh na ${monthLabel}\n\nV tomto měsíci zatím nemáš žádné směny.`;
-    }
-
-    const lines = [`Spay – Rozvrh na ${monthLabel}`, ""];
-
-    monthShifts.forEach((s) => {
-      const emp = employers.find((e) => e.id === s.employer_id);
-      const st = shiftTypes.find((t) => t.id === s.shift_type_id);
-      if (!emp || !st) return;
-      const effectiveType = resolvedShiftType(s, st);
-      const statusMeta = shiftStatusMeta(s.status || "worked");
-      const dateLabel = new Date(s.shift_date + "T00:00:00").toLocaleDateString("cs-CZ", {
-        weekday: "short",
-        day: "numeric",
-        month: "numeric",
-      });
-      const noteText = s.note ? ` · ${s.note}` : "";
-      lines.push(`${dateLabel} · ${emp.name} · ${effectiveType.start_time}–${effectiveType.end_time} · ${statusMeta.label}${noteText}`);
-    });
-
-    return lines.join("\n");
-  };
-
-  const shareSchedule = async () => {
-    const textToShare = scheduleTextForMonth();
-    setShareInfo("");
-
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: `Spay – Rozvrh na ${monthLabel}`,
-          text: textToShare,
-        });
-        setShareInfo("Rozvrh nasdílen.");
-        return;
-      }
-
-      await navigator.clipboard.writeText(textToShare);
-      setShareInfo("Rozvrh zkopírován. Teď ho můžeš vložit třeba do zprávy.");
-    } catch {
-      setShareInfo("Sdílení se nepovedlo. Zkus export.");
-    }
-  };
-
-  const exportSchedule = async () => {
-    setShareInfo("Připravuji PDF…");
-
-    try {
-      const exportRoot = document.createElement("div");
+  const createSchedulePdf = async () => {
+    const exportRoot = document.createElement("div");
       exportRoot.style.position = "fixed";
       exportRoot.style.left = "-10000px";
       exportRoot.style.top = "0";
@@ -2041,7 +1992,64 @@ function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift, onO
         heightLeft -= pageHeight - margin * 2;
       }
 
-      pdf.save(`spay-rozvrh-${monthKey}.pdf`);
+      const blob = pdf.output("blob");
+      const fileName = `spay-rozvrh-${monthKey}.pdf`;
+      return {
+        blob,
+        file: new File([blob], fileName, { type: "application/pdf" }),
+        fileName,
+      };
+  };
+
+  const shareSchedule = async () => {
+    setShareInfo("Připravuji rozvrh ke sdílení…");
+
+    try {
+      const { file, blob, fileName } = await createSchedulePdf();
+
+      if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+        await navigator.share({
+          title: `Spay – Rozvrh na ${monthLabel}`,
+          text: `Rozvrh směn na ${monthLabel}`,
+          files: [file],
+        });
+        setShareInfo("PDF rozvrh nasdílen.");
+        return;
+      }
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      setShareInfo("Tvoje zařízení neumí sdílet PDF přímo, takže se PDF stáhlo.");
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        setShareInfo("");
+        return;
+      }
+      console.error(error);
+      setShareInfo("Sdílení PDF se nepodařilo. Zkus Export PDF.");
+    }
+  };
+
+  const exportSchedule = async () => {
+    setShareInfo("Připravuji PDF…");
+
+    try {
+      const { blob, fileName } = await createSchedulePdf();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
       setShareInfo("Hotovo — vytvořil se grafický PDF rozvrh.");
     } catch (error) {
       console.error(error);
