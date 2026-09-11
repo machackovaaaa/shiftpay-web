@@ -44,7 +44,7 @@ export default function Login() {
         : await supabase.auth.signUp({
             email,
             password,
-            options: { data: { full_name: fullName.trim() } },
+            options: { data: { full_name: fullName.trim(), onboarding_completed: false } },
           });
 
     setLoading(false);

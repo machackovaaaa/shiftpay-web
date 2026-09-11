@@ -2609,6 +2609,383 @@ function TabBar({ active, setActive }) {
 }
 
 
+
+function OnboardingScreen({ session, userId, shiftTypes, refresh, onComplete }) {
+  const [step, setStep] = useState(1);
+  const [name, setName] = useState(session?.user?.user_metadata?.full_name || "");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const [employerName, setEmployerName] = useState("");
+  const [employerType, setEmployerType] = useState("DPP");
+  const [rate, setRate] = useState("");
+  const [employerId, setEmployerId] = useState(null);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const [shiftDate, setShiftDate] = useState(today);
+  const [startTime, setStartTime] = useState("08:00");
+  const [endTime, setEndTime] = useState("16:00");
+  const [pauseMin, setPauseMin] = useState("30");
+
+  const completeOnboarding = async () => {
+    setSaving(true);
+    setError("");
+
+    const result = await supabase.auth.updateUser({
+      data: {
+        ...(session?.user?.user_metadata || {}),
+        full_name: name.trim() || session?.user?.user_metadata?.full_name || "",
+        onboarding_completed: true,
+      },
+    });
+
+    setSaving(false);
+
+    if (result.error || !result.data?.user) {
+      setError("Onboarding se nepodařilo dokončit. Zkus to prosím znovu.");
+      return;
+    }
+
+    onComplete(result.data.user);
+  };
+
+  const saveName = async () => {
+    const cleanName = name.trim();
+
+    if (!cleanName) {
+      setError("Napiš prosím své jméno.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    const result = await supabase.auth.updateUser({
+      data: {
+        ...(session?.user?.user_metadata || {}),
+        full_name: cleanName,
+        onboarding_completed: false,
+      },
+    });
+
+    setSaving(false);
+
+    if (result.error) {
+      setError("Jméno se nepodařilo uložit. Zkus to prosím znovu.");
+      return;
+    }
+
+    setStep(2);
+  };
+
+  const saveEmployer = async () => {
+    if (!employerName.trim() || !rate || Number(rate) <= 0) {
+      setError("Vyplň název zaměstnavatele a hodinovou sazbu.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    const result = await supabase
+      .from("employers")
+      .insert({
+        user_id: userId,
+        name: employerName.trim(),
+        type: employerType,
+        rate: Number(rate),
+        track_tips: true,
+        track_bonus: true,
+        track_consumption: false,
+        employee_discount_pct: 0,
+        icon: "Briefcase",
+        icon_color: EMPLOYER_COLORS[0],
+        monthly_limit: employerType === "DPP" ? 10000 : null,
+      })
+      .select()
+      .single();
+
+    setSaving(false);
+
+    if (result.error || !result.data) {
+      setError("Zaměstnavatele se nepodařilo uložit. Zkus to prosím znovu.");
+      return;
+    }
+
+    setEmployerId(result.data.id);
+    await refresh();
+    setStep(3);
+  };
+
+  const saveFirstShift = async () => {
+    const fallbackShiftType = shiftTypes[0];
+
+    if (!fallbackShiftType?.id) {
+      setError("Typy směn se ještě načítají. Zkus to za chvíli znovu.");
+      return;
+    }
+
+    if (!employerId) {
+      setError("Nejdřív je potřeba mít zaměstnavatele.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    const result = await supabase.from("shifts").insert({
+      user_id: userId,
+      employer_id: employerId,
+      shift_type_id: fallbackShiftType.id,
+      shift_date: shiftDate,
+      tip: 0,
+      bonus: 0,
+      consumption_amount: 0,
+      pause_override_min: Number(pauseMin) || 0,
+      status: "planned",
+      note: null,
+      custom_start_time: startTime,
+      custom_end_time: endTime,
+      custom_surcharge_pct: 0,
+    });
+
+    if (result.error) {
+      setSaving(false);
+      setError("První směnu se nepodařilo uložit. Zkus to prosím znovu.");
+      return;
+    }
+
+    await refresh();
+    await completeOnboarding();
+  };
+
+  const stepLabel = `${step} z 3`;
+  const progressWidth = `${(step / 3) * 100}%`;
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: C.bg,
+        color: C.ink,
+        fontFamily: FONT,
+        padding: "34px 20px 46px",
+        boxSizing: "border-box",
+      }}
+    >
+      <div style={{ width: "100%", maxWidth: 430, margin: "0 auto" }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 28 }}>
+          <SpayBadge />
+        </div>
+
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <span style={{ fontSize: 12, color: C.sub }}>{stepLabel}</span>
+            <span style={{ fontSize: 12, color: C.sub }}>Nastavení účtu</span>
+          </div>
+
+          <div style={{ height: 6, background: C.line, borderRadius: 999, overflow: "hidden" }}>
+            <div
+              style={{
+                height: "100%",
+                width: progressWidth,
+                background: C.blue,
+                borderRadius: 999,
+                transition: "width 180ms ease",
+              }}
+            />
+          </div>
+        </div>
+
+        {step === 1 && (
+          <>
+            <p style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-0.03em", margin: 0 }}>
+              Jak ti máme říkat?
+            </p>
+            <p style={{ fontSize: 14, color: C.sub, margin: "8px 0 24px" }}>
+              Tohle jméno se bude zobrazovat v pozdravu a v aplikaci.
+            </p>
+
+            <Field label="Tvoje jméno">
+              <input
+                autoFocus
+                type="text"
+                style={inputStyle}
+                placeholder="Např. Kristina"
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setError("");
+                }}
+              />
+            </Field>
+
+            <ErrorText>{error}</ErrorText>
+            <PrimaryButton onClick={saveName} disabled={saving}>
+              {saving ? "Ukládám…" : "Pokračovat"}
+            </PrimaryButton>
+          </>
+        )}
+
+        {step === 2 && (
+          <>
+            <p style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-0.03em", margin: 0 }}>
+              Přidej zaměstnavatele
+            </p>
+            <p style={{ fontSize: 14, color: C.sub, margin: "8px 0 24px" }}>
+              Stačí základ. Dýška, bonusy, barvu nebo zaměstnaneckou slevu můžeš upravit později.
+            </p>
+
+            <Field label="Název">
+              <input
+                type="text"
+                style={inputStyle}
+                placeholder="Např. Stage Bar"
+                value={employerName}
+                onChange={(e) => {
+                  setEmployerName(e.target.value);
+                  setError("");
+                }}
+              />
+            </Field>
+
+            <Field label="Typ smlouvy">
+              <select
+                style={selectStyle}
+                value={employerType}
+                onChange={(e) => setEmployerType(e.target.value)}
+              >
+                <option value="DPP">DPP</option>
+                <option value="DPC">DPČ</option>
+              </select>
+            </Field>
+
+            <Field label="Hodinová sazba (Kč)">
+              <input
+                type="number"
+                min="0"
+                style={inputStyle}
+                placeholder="Např. 180"
+                value={rate}
+                onChange={(e) => {
+                  setRate(e.target.value);
+                  setError("");
+                }}
+              />
+            </Field>
+
+            <ErrorText>{error}</ErrorText>
+
+            <PrimaryButton onClick={saveEmployer} disabled={saving}>
+              {saving ? "Ukládám…" : "Přidat zaměstnavatele"}
+            </PrimaryButton>
+
+            <button
+              type="button"
+              onClick={completeOnboarding}
+              disabled={saving}
+              style={{
+                width: "100%",
+                border: "none",
+                background: "transparent",
+                color: C.sub,
+                fontSize: 13,
+                fontFamily: FONT,
+                marginTop: 14,
+                cursor: "pointer",
+              }}
+            >
+              Přeskočit a nastavit později
+            </button>
+          </>
+        )}
+
+        {step === 3 && (
+          <>
+            <p style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-0.03em", margin: 0 }}>
+              Přidej první směnu
+            </p>
+            <p style={{ fontSize: 14, color: C.sub, margin: "8px 0 24px" }}>
+              Směnu můžeš později kdykoliv upravit nebo smazat.
+            </p>
+
+            <Field label="Datum">
+              <input
+                type="date"
+                style={inputStyle}
+                value={shiftDate}
+                onChange={(e) => setShiftDate(e.target.value)}
+              />
+            </Field>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <Field label="Začátek">
+                  <input
+                    type="time"
+                    style={inputStyle}
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                  />
+                </Field>
+              </div>
+
+              <div style={{ flex: 1 }}>
+                <Field label="Konec">
+                  <input
+                    type="time"
+                    style={inputStyle}
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                  />
+                </Field>
+              </div>
+            </div>
+
+            <Field label="Pauza (min)">
+              <input
+                type="number"
+                min="0"
+                style={inputStyle}
+                value={pauseMin}
+                onChange={(e) => setPauseMin(e.target.value)}
+              />
+            </Field>
+
+            <ErrorText>{error}</ErrorText>
+
+            <PrimaryButton onClick={saveFirstShift} disabled={saving}>
+              {saving ? "Ukládám…" : "Přidat směnu a dokončit"}
+            </PrimaryButton>
+
+            <button
+              type="button"
+              onClick={completeOnboarding}
+              disabled={saving}
+              style={{
+                width: "100%",
+                border: "none",
+                background: "transparent",
+                color: C.sub,
+                fontSize: 13,
+                fontFamily: FONT,
+                marginTop: 14,
+                cursor: "pointer",
+              }}
+            >
+              Přeskočit první směnu
+            </button>
+          </>
+        )}
+
+        <p style={{ fontSize: 11, color: C.sub, textAlign: "center", margin: "30px 0 0" }}>
+          Všechno můžeš později změnit v Nastavení.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function PasswordResetScreen({ onDone }) {
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
@@ -2798,6 +3175,33 @@ export default function App() {
     return (
       <div style={themeVars}>
         <PasswordResetScreen onDone={() => setPasswordRecovery(false)} />
+      </div>
+    );
+  }
+
+  const needsOnboarding = session?.user?.user_metadata?.onboarding_completed === false;
+
+  if (needsOnboarding) {
+    if (loading) {
+      return (
+        <div style={{ ...themeVars, minHeight: "100vh", background: C.bg, color: C.ink, fontFamily: FONT }}>
+          <p style={{ textAlign: "center", color: C.sub, padding: 40 }}>Připravuji Spay…</p>
+        </div>
+      );
+    }
+
+    return (
+      <div style={themeVars}>
+        <OnboardingScreen
+          session={session}
+          userId={userId}
+          shiftTypes={shiftTypes}
+          refresh={refresh}
+          onComplete={(user) => {
+            setSession((prev) => prev ? { ...prev, user } : prev);
+            setActive("overview");
+          }}
+        />
       </div>
     );
   }
