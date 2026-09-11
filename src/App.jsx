@@ -3,6 +3,8 @@ import { Sun, Sunset, Moon, Clock, Plus, Home, Calendar, Settings as SettingsIco
 import { supabase } from "./lib/supabase";
 import { computeHours, computePay, hoursForShift, payForShift, effectivePauseMin, isLiveShift, liveElapsedLabel, rawDurationLabel, fmtK, typeLabel } from "./lib/calc";
 import Login from "./components/Login";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 
 const FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif";
 const C = {
@@ -1819,18 +1821,228 @@ function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift, onO
     }
   };
 
-  const exportSchedule = () => {
-    const textToExport = scheduleTextForMonth();
-    const blob = new Blob([textToExport], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `spay-rozvrh-${monthKey}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    setShareInfo("Rozvrh byl stažen jako .txt");
+  const exportSchedule = async () => {
+    setShareInfo("Připravuji PDF…");
+
+    try {
+      const exportRoot = document.createElement("div");
+      exportRoot.style.position = "fixed";
+      exportRoot.style.left = "-10000px";
+      exportRoot.style.top = "0";
+      exportRoot.style.width = "794px";
+      exportRoot.style.boxSizing = "border-box";
+      exportRoot.style.padding = "54px";
+      exportRoot.style.background = "#F5F6FA";
+      exportRoot.style.color = "#1C1C1E";
+      exportRoot.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif";
+
+      const worked = monthShifts.filter((s) => (s.status || "worked") === "worked");
+      const planned = monthShifts.filter((s) => s.status === "planned");
+      const cancelled = monthShifts.filter((s) => s.status === "cancelled");
+
+      let totalHours = 0;
+      let totalMoney = 0;
+
+      monthShifts.forEach((s) => {
+        if (s.status === "cancelled") return;
+        const emp = employers.find((e) => e.id === s.employer_id);
+        const st = shiftTypes.find((t) => t.id === s.shift_type_id);
+        if (!emp || !st) return;
+        const effectiveType = resolvedShiftType(s, st);
+        totalHours += hoursForShift(s, effectiveType);
+        totalMoney += payForShift(s, emp, effectiveType);
+        totalMoney += Number(s.tip) || 0;
+        totalMoney += Number(s.bonus) || 0;
+        totalMoney -= consumptionDeduction(s, emp);
+      });
+
+      const statusStyle = (status) => {
+        if (status === "planned") return { bg: "#EAF3FF", color: "#007AFF", label: "Plánovaná" };
+        if (status === "cancelled") return { bg: "#FFE9EC", color: "#E23B50", label: "Zrušená" };
+        return { bg: "#E9F8EE", color: "#20A84A", label: "Odpracovaná" };
+      };
+
+      const rows = monthShifts.map((s) => {
+        const emp = employers.find((e) => e.id === s.employer_id);
+        const st = shiftTypes.find((t) => t.id === s.shift_type_id);
+        if (!emp || !st) return "";
+
+        const effectiveType = resolvedShiftType(s, st);
+        const status = statusStyle(s.status || "worked");
+        const hours = hoursForShift(s, effectiveType);
+        const pay = payForShift(s, emp, effectiveType)
+          + (Number(s.tip) || 0)
+          + (Number(s.bonus) || 0)
+          - consumptionDeduction(s, emp);
+
+        const d = new Date(`${s.shift_date}T00:00:00`);
+        const dateLabel = d.toLocaleDateString("cs-CZ", {
+          weekday: "short",
+          day: "numeric",
+          month: "numeric",
+        });
+
+        return `
+          <div style="
+            display:flex;
+            align-items:center;
+            gap:16px;
+            padding:16px 0;
+            border-bottom:1px solid #E5E5EA;
+          ">
+            <div style="width:78px;flex-shrink:0;">
+              <div style="font-size:14px;font-weight:700;text-transform:capitalize;">${dateLabel}</div>
+            </div>
+
+            <div style="
+              width:5px;
+              align-self:stretch;
+              min-height:52px;
+              border-radius:4px;
+              background:${emp.icon_color || "#007AFF"};
+              flex-shrink:0;
+            "></div>
+
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:17px;font-weight:700;margin-bottom:4px;">${emp.name}</div>
+              <div style="font-size:13px;color:#8E8E93;">
+                ${effectiveType.start_time}–${effectiveType.end_time} · ${typeLabel(emp.type)} · ${Math.round(hours * 10) / 10} h
+              </div>
+              ${s.note ? `<div style="font-size:12px;color:#8E8E93;margin-top:4px;">${s.note}</div>` : ""}
+            </div>
+
+            <div style="
+              font-size:11px;
+              font-weight:700;
+              color:${status.color};
+              background:${status.bg};
+              padding:5px 9px;
+              border-radius:10px;
+              white-space:nowrap;
+            ">${status.label}</div>
+
+            <div style="width:96px;text-align:right;flex-shrink:0;">
+              <div style="font-size:16px;font-weight:700;">${fmtK(pay)} Kč</div>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      exportRoot.innerHTML = `
+        <div style="
+          background:#FFFFFF;
+          border-radius:28px;
+          padding:34px;
+          box-sizing:border-box;
+        ">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;">
+            <div>
+              <div style="
+                display:inline-block;
+                background:#000;
+                color:#fff;
+                border-radius:10px;
+                padding:7px 14px;
+                font-size:18px;
+                font-weight:800;
+                margin-bottom:22px;
+              ">Spay</div>
+              <div style="font-size:34px;font-weight:800;letter-spacing:-1px;">Rozvrh směn</div>
+              <div style="font-size:17px;color:#8E8E93;margin-top:6px;text-transform:capitalize;">${monthLabel}</div>
+            </div>
+
+            <div style="text-align:right;padding-top:10px;">
+              <div style="font-size:12px;color:#8E8E93;">Celkem</div>
+              <div style="font-size:28px;font-weight:800;margin-top:3px;">${fmtK(totalMoney)} Kč</div>
+              <div style="font-size:13px;color:#8E8E93;margin-top:5px;">${Math.round(totalHours * 10) / 10} h</div>
+            </div>
+          </div>
+
+          <div style="
+            display:grid;
+            grid-template-columns:repeat(3,1fr);
+            gap:12px;
+            margin-top:30px;
+            margin-bottom:28px;
+          ">
+            <div style="background:#E9F8EE;border-radius:16px;padding:16px;">
+              <div style="font-size:12px;color:#6D737A;">Odpracované</div>
+              <div style="font-size:22px;font-weight:800;margin-top:6px;">${worked.length}</div>
+            </div>
+            <div style="background:#EAF3FF;border-radius:16px;padding:16px;">
+              <div style="font-size:12px;color:#6D737A;">Plánované</div>
+              <div style="font-size:22px;font-weight:800;margin-top:6px;">${planned.length}</div>
+            </div>
+            <div style="background:#FFE9EC;border-radius:16px;padding:16px;">
+              <div style="font-size:12px;color:#6D737A;">Zrušené</div>
+              <div style="font-size:22px;font-weight:800;margin-top:6px;">${cancelled.length}</div>
+            </div>
+          </div>
+
+          <div style="font-size:18px;font-weight:800;margin-bottom:4px;">Směny</div>
+
+          ${monthShifts.length > 0
+            ? rows
+            : `<div style="padding:30px 0;color:#8E8E93;font-size:15px;">V tomto měsíci zatím nemáš žádné směny.</div>`
+          }
+
+          <div style="
+            margin-top:28px;
+            padding-top:16px;
+            border-top:1px solid #E5E5EA;
+            color:#8E8E93;
+            font-size:11px;
+            display:flex;
+            justify-content:space-between;
+          ">
+            <span>Vygenerováno v aplikaci Spay</span>
+            <span>${new Date().toLocaleDateString("cs-CZ")}</span>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(exportRoot);
+
+      const canvas = await html2canvas(exportRoot, {
+        scale: 2,
+        backgroundColor: "#F5F6FA",
+        useCORS: true,
+      });
+
+      exportRoot.remove();
+
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 8;
+      const imgWidth = pageWidth - margin * 2;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const imgData = canvas.toDataURL("image/jpeg", 0.96);
+
+      let heightLeft = imgHeight;
+      let position = margin;
+
+      pdf.addImage(imgData, "JPEG", margin, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight - margin * 2;
+
+      while (heightLeft > 0) {
+        position = margin - (imgHeight - heightLeft);
+        pdf.addPage();
+        pdf.addImage(imgData, "JPEG", margin, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight - margin * 2;
+      }
+
+      pdf.save(`spay-rozvrh-${monthKey}.pdf`);
+      setShareInfo("Hotovo — vytvořil se grafický PDF rozvrh.");
+    } catch (error) {
+      console.error(error);
+      setShareInfo("PDF se nepodařilo vytvořit. Zkus to prosím znovu.");
+    }
   };
 
   const goMonth = (delta) => {
@@ -1961,7 +2173,7 @@ function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift, onO
             fontFamily: FONT,
           }}
         >
-          Export .txt
+          Export PDF
         </button>
       </div>
 
