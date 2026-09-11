@@ -426,31 +426,107 @@ function LiveShiftBanner({ shift, employer, shiftType, onStop }) {
   );
 }
 
-function AddEmployerSheet({ userId, onClose, onSaved }) {
-  const [name, setName] = useState(""); const [type, setType] = useState("DPP");
-  const [rate, setRate] = useState(""); const [trackTips, setTrackTips] = useState(true); const [trackBonus, setTrackBonus] = useState(true);
-  const [icon, setIcon] = useState("Briefcase");
-  const [iconColor, setIconColor] = useState(EMPLOYER_COLORS[0]);
+function AddEmployerSheet({ userId, onClose, onSaved, employer = null }) {
+  const editing = Boolean(employer);
+
+  const [name, setName] = useState(employer?.name || "");
+  const [type, setType] = useState(employer?.type || "DPP");
+  const [rate, setRate] = useState(String(employer?.rate ?? ""));
+  const [trackTips, setTrackTips] = useState(employer?.track_tips !== false);
+  const [trackBonus, setTrackBonus] = useState(employer?.track_bonus !== false);
+  const [icon, setIcon] = useState(employer?.icon || "Briefcase");
+  const [iconColor, setIconColor] = useState(employer?.icon_color || EMPLOYER_COLORS[0]);
+  const [monthlyLimit, setMonthlyLimit] = useState(
+    employer?.monthly_limit != null
+      ? String(employer.monthly_limit)
+      : (employer?.type || "DPP") === "DPP"
+        ? "10000"
+        : ""
+  );
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
   const submit = async () => {
-    if (!name.trim() || !rate || Number(rate) <= 0) { setError("Vyplň jméno a hodinovou sazbu."); return; }
-    const { error: err } = await supabase.from("employers").insert({
-      user_id: userId, name: name.trim(), type, rate: Number(rate), track_tips: trackTips, track_bonus: trackBonus, icon, icon_color: iconColor,
-      monthly_limit: type === "DPP" ? 10000 : null,
-    });
-    if (err) { setError(err.message); return; }
-    onSaved(); onClose();
+    if (!name.trim() || !rate || Number(rate) <= 0) {
+      setError("Vyplň název a hodinovou sazbu.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    const payload = {
+      name: name.trim(),
+      type,
+      rate: Number(rate),
+      track_tips: trackTips,
+      track_bonus: trackBonus,
+      icon,
+      icon_color: iconColor,
+      monthly_limit: monthlyLimit === "" ? null : Number(monthlyLimit),
+    };
+
+    let result;
+
+    if (editing) {
+      result = await supabase
+        .from("employers")
+        .update(payload)
+        .eq("id", employer.id);
+    } else {
+      result = await supabase
+        .from("employers")
+        .insert({
+          user_id: userId,
+          ...payload,
+        });
+    }
+
+    setSaving(false);
+
+    if (result.error) {
+      setError(result.error.message);
+      return;
+    }
+
+    await onSaved();
+    onClose();
   };
+
   return (
-    <Sheet title="Nový zaměstnavatel" onClose={onClose}>
-      <Field label="Název"><input style={inputStyle} placeholder="např. Kavárna Nuance" value={name} onChange={(e) => setName(e.target.value)} /></Field>
+    <Sheet title={editing ? "Upravit zaměstnavatele" : "Nový zaměstnavatel"} onClose={onClose}>
+      <Field label="Název">
+        <input
+          style={inputStyle}
+          placeholder="např. Kavárna Nuance"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </Field>
+
       <Field label="Typ práce">
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {Object.keys(EMPLOYER_ICONS).map((name2) => {
-            const Ic = EMPLOYER_ICONS[name2]; const isSel = icon === name2;
+            const Ic = EMPLOYER_ICONS[name2];
+            const isSel = icon === name2;
             return (
-              <button key={name2} onClick={() => setIcon(name2)} type="button"
-                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, width: 62, padding: "8px 4px", borderRadius: 12, cursor: "pointer", border: isSel ? `1.5px solid ${iconColor}` : `0.5px solid ${C.line}`, background: isSel ? "#F2F2F7" : C.card }}>
+              <button
+                key={name2}
+                onClick={() => setIcon(name2)}
+                type="button"
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 3,
+                  width: 62,
+                  padding: "8px 4px",
+                  borderRadius: 12,
+                  cursor: "pointer",
+                  border: isSel ? `1.5px solid ${iconColor}` : `0.5px solid ${C.line}`,
+                  background: isSel ? "var(--sp-muted-card)" : C.card,
+                }}
+              >
                 <Ic size={17} color={isSel ? iconColor : C.sub} />
                 <span style={{ fontSize: 10, color: isSel ? iconColor : C.sub }}>{EMPLOYER_ICON_LABELS[name2]}</span>
               </button>
@@ -458,18 +534,73 @@ function AddEmployerSheet({ userId, onClose, onSaved }) {
           })}
         </div>
       </Field>
-      <Field label="Barva ikonky">
-        <div style={{ display: "flex", gap: 8 }}>
+
+      <Field label="Barva">
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 9 }}>
           {EMPLOYER_COLORS.map((c) => (
-            <button key={c} onClick={() => setIconColor(c)} type="button" aria-label={c}
-              style={{ width: 30, height: 30, borderRadius: "50%", background: c, border: iconColor === c ? `2px solid ${C.ink}` : "2px solid transparent", cursor: "pointer", padding: 0 }} />
+            <button
+              key={c}
+              onClick={() => setIconColor(c)}
+              type="button"
+              aria-label={c}
+              style={{
+                width: 31,
+                height: 31,
+                borderRadius: "50%",
+                background: c,
+                border: iconColor === c ? `2px solid ${C.ink}` : "2px solid transparent",
+                cursor: "pointer",
+                padding: 0,
+              }}
+            />
           ))}
         </div>
       </Field>
-      <Field label="Typ smlouvy"><select style={selectStyle} value={type} onChange={(e) => setType(e.target.value)}><option value="DPP">DPP</option><option value="DPC">DPČ</option></select></Field>
-      <Field label="Hodinová sazba (Kč)"><input type="number" min="0" style={inputStyle} placeholder="150" value={rate} onChange={(e) => setRate(e.target.value)} /></Field>
+
+      <Field label="Typ smlouvy">
+        <select
+          style={selectStyle}
+          value={type}
+          onChange={(e) => {
+            const nextType = e.target.value;
+            setType(nextType);
+            if (nextType !== "DPP" && monthlyLimit === "10000") setMonthlyLimit("");
+            if (nextType === "DPP" && monthlyLimit === "") setMonthlyLimit("10000");
+          }}
+        >
+          <option value="DPP">DPP</option>
+          <option value="DPC">DPČ</option>
+        </select>
+      </Field>
+
+      <Field label="Hodinová sazba (Kč)">
+        <input
+          type="number"
+          min="0"
+          style={inputStyle}
+          placeholder="150"
+          value={rate}
+          onChange={(e) => setRate(e.target.value)}
+        />
+      </Field>
+
+      <Field label="Měsíční limit (Kč, nepovinné)">
+        <input
+          type="number"
+          min="0"
+          style={inputStyle}
+          placeholder="např. 10000"
+          value={monthlyLimit}
+          onChange={(e) => setMonthlyLimit(e.target.value)}
+        />
+      </Field>
+
       <Field label="Dýška">
-        <button onClick={() => setTrackTips((v) => !v)} style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+        <button
+          onClick={() => setTrackTips((v) => !v)}
+          type="button"
+          style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: 0, cursor: "pointer" }}
+        >
           <div style={{ width: 44, height: 26, borderRadius: 13, background: trackTips ? C.green : C.line, position: "relative", transition: "background 0.15s" }}>
             <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: trackTips ? 20 : 2, transition: "left 0.15s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
           </div>
@@ -478,15 +609,22 @@ function AddEmployerSheet({ userId, onClose, onSaved }) {
       </Field>
 
       <Field label="Bonus">
-        <button onClick={() => setTrackBonus((v) => !v)} style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+        <button
+          onClick={() => setTrackBonus((v) => !v)}
+          type="button"
+          style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: 0, cursor: "pointer" }}
+        >
           <div style={{ width: 44, height: 26, borderRadius: 13, background: trackBonus ? C.green : C.line, position: "relative", transition: "background 0.15s" }}>
             <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: trackBonus ? 20 : 2, transition: "left 0.15s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
           </div>
           <span style={{ fontSize: 13, color: C.sub }}>{trackBonus ? "evidovat u směn" : "neevidovat"}</span>
         </button>
       </Field>
+
       <ErrorText>{error}</ErrorText>
-      <PrimaryButton onClick={submit}>Uložit zaměstnavatele</PrimaryButton>
+      <PrimaryButton onClick={submit} disabled={saving}>
+        {saving ? "Ukládám…" : editing ? "Uložit změny" : "Uložit zaměstnavatele"}
+      </PrimaryButton>
     </Sheet>
   );
 }
@@ -499,6 +637,7 @@ function AddShiftTypeSheet({ userId, onClose, onSaved, shiftType = null }) {
   const [pauseMin, setPauseMin] = useState(String(shiftType?.pause_min ?? 30));
   const [surchargePct, setSurchargePct] = useState(String(shiftType?.surcharge_pct ?? 0));
   const [icon, setIcon] = useState(shiftType?.icon || "Sun");
+  const [color, setColor] = useState(shiftType?.color || ICON_COLORS[shiftType?.icon] || EMPLOYER_COLORS[0]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -518,6 +657,7 @@ function AddShiftTypeSheet({ userId, onClose, onSaved, shiftType = null }) {
       pause_min: Number(pauseMin) || 0,
       surcharge_pct: Number(surchargePct) || 0,
       icon,
+      color,
     };
 
     let result;
@@ -584,37 +724,24 @@ function AddShiftTypeSheet({ userId, onClose, onSaved, shiftType = null }) {
       </div>
 
       <Field label="Barva typu směny">
-        <div style={{ display: "flex", gap: 8 }}>
-          {Object.keys(ICONS).map((name2) => {
-            const isSel = icon === name2;
-            return (
-              <button
-                key={name2}
-                onClick={() => setIcon(name2)}
-                aria-label={name2}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  cursor: "pointer",
-                  border: isSel ? `1.5px solid ${C.blue}` : `0.5px solid ${C.line}`,
-                  background: isSel ? "var(--sp-blue-soft)" : C.card,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <div
-                  style={{
-                    width: 4,
-                    height: 24,
-                    borderRadius: 4,
-                    background: ICON_COLORS[name2] || C.blue,
-                  }}
-                />
-              </button>
-            );
-          })}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 9 }}>
+          {EMPLOYER_COLORS.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setColor(c)}
+              aria-label={c}
+              style={{
+                width: 31,
+                height: 31,
+                borderRadius: "50%",
+                background: c,
+                border: color === c ? `2px solid ${C.ink}` : "2px solid transparent",
+                cursor: "pointer",
+                padding: 0,
+              }}
+            />
+          ))}
         </div>
       </Field>
 
@@ -1821,7 +1948,7 @@ function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift, onO
   );
 }
 
-function SettingsScreen({ employers, shiftTypes, onAddShiftType, onEditShiftType, onAddEmployer, onLogout, refresh, session, onProfileUpdated, darkMode, onToggleDarkMode }) {
+function SettingsScreen({ employers, shiftTypes, onAddShiftType, onEditShiftType, onAddEmployer, onEditEmployer, onLogout, refresh, session, onProfileUpdated, darkMode, onToggleDarkMode }) {
   const [name, setName] = useState(session?.user?.user_metadata?.full_name || "");
   const [savingName, setSavingName] = useState(false);
   const [nameMessage, setNameMessage] = useState("");
@@ -1965,7 +2092,7 @@ function SettingsScreen({ employers, shiftTypes, onAddShiftType, onEditShiftType
                 cursor: "pointer",
               }}
             >
-              <div style={{ width: 4, minHeight: 42, alignSelf: "stretch", borderRadius: 4, background: ICON_COLORS[t.icon] || C.blue, flexShrink: 0 }} />
+              <div style={{ width: 4, minHeight: 42, alignSelf: "stretch", borderRadius: 4, background: t.color || ICON_COLORS[t.icon] || C.blue, flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: 15, color: C.ink, margin: 0 }}>{t.name}</p>
                 <p style={{ fontSize: 12, color: C.sub, margin: "1px 0 0" }}>{t.start_time}–{t.end_time} · pauza {t.pause_min} min{t.surcharge_pct ? ` · +${t.surcharge_pct}%` : ""}</p>
@@ -2002,18 +2129,50 @@ function SettingsScreen({ employers, shiftTypes, onAddShiftType, onEditShiftType
       <GroupedList>
         {employers.map((e, i) => {
           return (
-          <div key={e.id} style={{ padding: "11px 14px", borderBottom: i < employers.length - 1 ? `0.5px solid ${C.line}` : "none" }}>
+          <div
+            key={e.id}
+            onClick={() => onEditEmployer(e)}
+            style={{
+              padding: "11px 14px",
+              borderBottom: i < employers.length - 1 ? `0.5px solid ${C.line}` : "none",
+              cursor: "pointer",
+            }}
+          >
             <div style={{ display: "flex", alignItems: "stretch", gap: 10 }}>
               <div style={{ width: 4, minHeight: 42, borderRadius: 4, background: e.icon_color || C.blue, flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 3 }}>
                   <p style={{ fontSize: 15, color: C.ink, margin: 0, flex: 1 }}>{e.name}</p>
                   <span style={{ fontSize: 11, fontWeight: 600, color: C.blue, background: "var(--sp-blue-soft)", borderRadius: 6, padding: "2px 8px" }}>{typeLabel(e.type)}</span>
-                  <button onClick={() => removeEmployer(e.id)} aria-label="Smazat zaměstnavatele" style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={14} color={C.line} /></button>
+
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onEditEmployer(e);
+                    }}
+                    aria-label="Upravit zaměstnavatele"
+                    style={{ background: "none", border: "none", cursor: "pointer", padding: 5 }}
+                  >
+                    <Pencil size={14} color={C.sub} />
+                  </button>
+
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      removeEmployer(e.id);
+                    }}
+                    aria-label="Smazat zaměstnavatele"
+                    style={{ background: "none", border: "none", cursor: "pointer", padding: 5 }}
+                  >
+                    <Trash2 size={14} color={C.line} />
+                  </button>
                 </div>
                 <p style={{ fontSize: 12, color: C.sub, margin: "0 0 2px" }}>{e.rate} Kč / h</p>
                 <p style={{ fontSize: 12, color: C.sub, margin: "0 0 2px" }}>dýška: {e.track_tips ? "evidovat u každé směny" : "neevidovat"}</p>
-                <p style={{ fontSize: 12, color: C.sub, margin: 0 }}>bonus: {e.track_bonus !== false ? "evidovat u každé směny" : "neevidovat"}</p>
+                <p style={{ fontSize: 12, color: C.sub, margin: "0 0 2px" }}>bonus: {e.track_bonus !== false ? "evidovat u každé směny" : "neevidovat"}</p>
+                {e.monthly_limit != null && (
+                  <p style={{ fontSize: 12, color: C.sub, margin: 0 }}>limit: {fmtK(e.monthly_limit)} Kč / měsíc</p>
+                )}
               </div>
             </div>
           </div>
@@ -2157,6 +2316,7 @@ export default function App() {
   const [sheet, setSheet] = useState(null);
   const [selectedShift, setSelectedShift] = useState(null);
   const [selectedShiftType, setSelectedShiftType] = useState(null);
+  const [selectedEmployer, setSelectedEmployer] = useState(null);
   const [newShiftDate, setNewShiftDate] = useState(null);
 
   useEffect(() => {
@@ -2259,7 +2419,7 @@ export default function App() {
             {active === "overview" && <OverviewScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} userName={userName} onOpenSettings={() => setActive("settings")} />}
             {active === "shifts" && <ShiftsScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onAdd={() => { setNewShiftDate(null); setSheet("shift"); }} onStart={() => setSheet("start")} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} refresh={refresh} onOpenSettings={() => setActive("settings")} />}
             {active === "calendar" && <CalendarScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} onAddShift={(date) => { setNewShiftDate(date); setSheet("shift"); }} onOpenSettings={() => setActive("settings")} />}
-            {active === "settings" && <SettingsScreen employers={employers} shiftTypes={shiftTypes} onAddShiftType={() => { setSelectedShiftType(null); setSheet("shiftType"); }} onEditShiftType={(shiftType) => { setSelectedShiftType(shiftType); setSheet("shiftType"); }} onAddEmployer={() => setSheet("employer")} onLogout={() => supabase.auth.signOut()} refresh={refresh} session={session} onProfileUpdated={(user) => setSession((prev) => prev ? { ...prev, user } : prev)} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} />}
+            {active === "settings" && <SettingsScreen employers={employers} shiftTypes={shiftTypes} onAddShiftType={() => { setSelectedShiftType(null); setSheet("shiftType"); }} onEditShiftType={(shiftType) => { setSelectedShiftType(shiftType); setSheet("shiftType"); }} onAddEmployer={() => { setSelectedEmployer(null); setSheet("employer"); }} onEditEmployer={(employer) => { setSelectedEmployer(employer); setSheet("employer"); }} onLogout={() => supabase.auth.signOut()} refresh={refresh} session={session} onProfileUpdated={(user) => setSession((prev) => prev ? { ...prev, user } : prev)} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} />}
           </>
         )}
       </div>
@@ -2267,7 +2427,7 @@ export default function App() {
       {sheet === "shift" && <AddShiftSheet userId={userId} employers={employers} shiftTypes={shiftTypes} initialDate={newShiftDate} onClose={() => { setSheet(null); setNewShiftDate(null); }} onSaved={refresh} />}
       {sheet === "editShift" && selectedShift && <EditShiftSheet shift={selectedShift} userId={userId} employers={employers} shiftTypes={shiftTypes} onClose={() => { setSheet(null); setSelectedShift(null); }} onSaved={refresh} />}
       {sheet === "start" && <StartShiftSheet userId={userId} employers={employers} shiftTypes={shiftTypes} onClose={() => setSheet(null)} onSaved={refresh} />}
-      {sheet === "employer" && <AddEmployerSheet userId={userId} onClose={() => setSheet(null)} onSaved={refresh} />}
+      {sheet === "employer" && <AddEmployerSheet userId={userId} employer={selectedEmployer} onClose={() => { setSheet(null); setSelectedEmployer(null); }} onSaved={refresh} />}
       {sheet === "shiftType" && <AddShiftTypeSheet userId={userId} shiftType={selectedShiftType} onClose={() => { setSheet(null); setSelectedShiftType(null); }} onSaved={refresh} />}
     </div>
   );
