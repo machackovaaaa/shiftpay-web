@@ -1003,7 +1003,7 @@ function EditShiftSheet({ shift, userId, employers, shiftTypes, onClose, onSaved
         <button
           onClick={remove}
           disabled={saving}
-          style={{ flex: 1, border: "none", borderRadius: 12, padding: "12px 0", background: "var(--sp-red-soft)", color: C.red, fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 6 }}
+          style={{ flex: 1, border: "none", borderRadius: 12, padding: "12px 0", background: "var(--sp-loss-soft)", color: C.red, fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 6 }}
         >
           <Trash2 size={15} /> Smazat
         </button>
@@ -1211,14 +1211,14 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
           {tile("Počet směn", String(workedShifts.length), "var(--sp-blue-soft)", C.blue)}
-          {tile("Odpracováno", `${Math.round(monthHours * 10) / 10} h`, "var(--sp-green-soft)", C.green)}
-          {tile("Mzda", `${fmtK(wageTotal)} Kč`, "var(--sp-orange-soft)", "#C77A00")}
+          {tile("Odpracováno", `${Math.round(monthHours * 10) / 10} h`, "var(--sp-teal-soft)", "var(--sp-teal-text)")}
+          {tile("Mzda", `${fmtK(wageTotal)} Kč`, "var(--sp-wage-soft)", "var(--sp-wage-text)")}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginTop: 8 }}>
-          {tile("Dýška", `${fmtK(tipsTotal)} Kč`, "var(--sp-red-soft)", "#E23B50")}
-          {tile("Bonusy", `${fmtK(bonusesTotal)} Kč`, "var(--sp-blue-soft)", C.blue)}
-          {tile("Jídlo / pití", `−${fmtK(deductionsTotal)} Kč`, "var(--sp-orange-soft)", C.orange)}
-          {tile("Celkem", `${fmtK(monthTotal)} Kč`, "var(--sp-purple-soft)", "#6C48D7")}
+          {tile("Dýška", `${fmtK(tipsTotal)} Kč`, "var(--sp-tip-soft)", "var(--sp-tip-text)")}
+          {tile("Bonusy", `${fmtK(bonusesTotal)} Kč`, "var(--sp-bonus-soft)", "var(--sp-bonus-text)")}
+          {tile("Jídlo / pití", `−${fmtK(deductionsTotal)} Kč`, "var(--sp-deduction-soft)", "var(--sp-deduction-text)")}
+          {tile("Celkem", `${fmtK(monthTotal)} Kč`, "var(--sp-total-soft)", "var(--sp-total-text)")}
         </div>
       </div>
 
@@ -1397,7 +1397,7 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
             style={{
               fontSize: 18,
               fontWeight: 700,
-              color: cancelledLoss > 0 ? C.red : C.sub,
+              color: cancelledLoss > 0 ? "var(--sp-loss-text)" : C.sub,
               margin: 0,
               whiteSpace: "nowrap",
             }}
@@ -3814,6 +3814,20 @@ export default function App() {
     "--sp-red-soft": "#3B2021",
     "--sp-purple-soft": "#29233F",
     "--sp-orange-soft": "#3A2B17",
+    "--sp-teal-soft": "#123533",
+    "--sp-teal-text": "#35C8BC",
+    "--sp-wage-soft": "#3A2B17",
+    "--sp-wage-text": "#F2A93B",
+    "--sp-tip-soft": "#173523",
+    "--sp-tip-text": "#43D267",
+    "--sp-bonus-soft": "#29233F",
+    "--sp-bonus-text": "#9A84F7",
+    "--sp-deduction-soft": "#3C251C",
+    "--sp-deduction-text": "#F08A55",
+    "--sp-total-soft": "#252440",
+    "--sp-total-text": "#8B82F6",
+    "--sp-loss-soft": "#3B2021",
+    "--sp-loss-text": "#FF6675",
     "--sp-trend": "#3A4351",
     "--sp-blue-panel": "#172335",
     "--sp-blue-border": "#29466D",
@@ -3832,6 +3846,20 @@ export default function App() {
     "--sp-red-soft": "#FFE9EC",
     "--sp-purple-soft": "#F0EAFF",
     "--sp-orange-soft": "#FFF3DD",
+    "--sp-teal-soft": "#E7F8F6",
+    "--sp-teal-text": "#00A89D",
+    "--sp-wage-soft": "#FFF3D9",
+    "--sp-wage-text": "#C77A00",
+    "--sp-tip-soft": "#E7F8EC",
+    "--sp-tip-text": "#28A745",
+    "--sp-bonus-soft": "#F0EAFE",
+    "--sp-bonus-text": "#6C48D7",
+    "--sp-deduction-soft": "#FFF0E8",
+    "--sp-deduction-text": "#E56B2F",
+    "--sp-total-soft": "#ECE9FF",
+    "--sp-total-text": "#5146D8",
+    "--sp-loss-soft": "#FFE9EC",
+    "--sp-loss-text": "#E23B50",
     "--sp-trend": "#DDE4EF",
     "--sp-blue-panel": "#EEF6FF",
     "--sp-blue-border": "#D9E8FF",
