@@ -32,6 +32,24 @@ function shiftStatusMeta(status) {
 }
 
 
+function resolvedShiftType(shift, shiftType) {
+  if (!shiftType) return null;
+  if (!shift?.custom_start_time || !shift?.custom_end_time) return shiftType;
+  return {
+    ...shiftType,
+    start_time: shift.custom_start_time,
+    end_time: shift.custom_end_time,
+    pause_min: shift.pause_override_min ?? shiftType.pause_min ?? 0,
+    surcharge_pct: shift.custom_surcharge_pct ?? 0,
+  };
+}
+
+function shiftTitle(shift, shiftType) {
+  if (shift?.custom_start_time && shift?.custom_end_time) return "Vlastní";
+  return shiftType?.name || "Směna";
+}
+
+
 const inputStyle = { width: "100%", boxSizing: "border-box", border: `0.5px solid ${C.line}`, borderRadius: 10, padding: "11px 12px", fontSize: 15, fontFamily: FONT, color: C.ink, background: C.card, outline: "none" };
 
 function Field({ label, children }) {
@@ -136,75 +154,130 @@ function useShiftPayData(userId) {
 
 function AddShiftSheet({ userId, employers, shiftTypes, onClose, onSaved }) {
   const today = new Date().toISOString().slice(0, 10);
+  const fallbackShiftType = shiftTypes[0];
   const [date, setDate] = useState(today);
   const [employerId, setEmployerId] = useState(employers[0]?.id || "");
-  const [shiftTypeId, setShiftTypeId] = useState(shiftTypes[0]?.id || "");
+  const [startTime, setStartTime] = useState("08:00");
+  const [endTime, setEndTime] = useState("16:00");
   const [tip, setTip] = useState("");
-  const [pauseMin, setPauseMin] = useState(null);
+  const [pauseMin, setPauseMin] = useState(30);
   const [status, setStatus] = useState("worked");
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const employer = employers.find((e) => e.id === employerId);
-  const shiftType = shiftTypes.find((s) => s.id === shiftTypeId);
-  const effectivePause = pauseMin !== null ? pauseMin : (shiftType?.pause_min || 0);
-  const previewHours = shiftType ? hoursForShift({ pause_override_min: effectivePause }, shiftType) : 0;
-  const previewPay = employer && shiftType ? payForShift({ pause_override_min: effectivePause }, employer, shiftType) : 0;
+
+  const previewType = fallbackShiftType ? {
+    ...fallbackShiftType,
+    start_time: startTime,
+    end_time: endTime,
+    pause_min: Number(pauseMin) || 0,
+    surcharge_pct: 0,
+  } : null;
+  const previewShift = { pause_override_min: Number(pauseMin) || 0 };
+  const previewHours = previewType ? hoursForShift(previewShift, previewType) : 0;
+  const previewPay = employer && previewType ? payForShift(previewShift, employer, previewType) : 0;
 
   const submit = async () => {
-    if (!date || !employerId || !shiftTypeId) { setError("Vyplň datum, zaměstnavatele a typ směny."); return; }
+    if (!date || !employerId || !startTime || !endTime) {
+      setError("Vyplň datum, zaměstnavatele a čas směny.");
+      return;
+    }
+    if (!fallbackShiftType?.id) {
+      setError("Nejdřív je potřeba mít v Nastavení alespoň jeden typ směny.");
+      return;
+    }
+
     const { error: err } = await supabase.from("shifts").insert({
-      user_id: userId, employer_id: employerId, shift_type_id: shiftTypeId, shift_date: date, tip: Number(tip) || 0,
-      pause_override_min: effectivePause,
+      user_id: userId,
+      employer_id: employerId,
+      shift_type_id: fallbackShiftType.id,
+      shift_date: date,
+      tip: Number(tip) || 0,
+      pause_override_min: Number(pauseMin) || 0,
       status,
       note: note.trim() || null,
+      custom_start_time: startTime,
+      custom_end_time: endTime,
+      custom_surcharge_pct: 0,
     });
-    if (err) { setError(err.message); return; }
+
+    if (err) {
+      setError(err.message);
+      return;
+    }
     onSaved();
     onClose();
   };
 
   if (employers.length === 0) {
-    return <Sheet title="Nová směna" onClose={onClose}><p style={{ fontSize: 15, color: C.sub }}>Nejdřív přidej alespoň jednoho zaměstnavatele v Nastavení.</p></Sheet>;
+    return (
+      <Sheet title="Přidat směnu" onClose={onClose}>
+        <p style={{ fontSize: 15, color: C.sub }}>
+          Nejdřív přidej alespoň jednoho zaměstnavatele v Nastavení.
+        </p>
+      </Sheet>
+    );
   }
 
   return (
-    <Sheet title="Nová směna" onClose={onClose}>
-      <Field label="Datum"><input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+    <Sheet title="Přidat směnu" onClose={onClose}>
       <Field label="Zaměstnavatel">
         <select style={inputStyle} value={employerId} onChange={(e) => setEmployerId(e.target.value)}>
-          {employers.map((e) => <option key={e.id} value={e.id}>{e.name} ({typeLabel(e.type)})</option>)}
+          {employers.map((e) => (
+            <option key={e.id} value={e.id}>{e.name} ({typeLabel(e.type)})</option>
+          ))}
         </select>
       </Field>
-      <Field label="Typ směny">
-        <select style={inputStyle} value={shiftTypeId} onChange={(e) => { setShiftTypeId(e.target.value); setPauseMin(null); }}>
-          {shiftTypes.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.start_time}–{s.end_time})</option>)}
-        </select>
+
+      <Field label="Datum">
+        <input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
       </Field>
-      <Field label="Pauza tenhle den (min)">
-        <input type="number" min="0" style={inputStyle} value={effectivePause} onChange={(e) => setPauseMin(Number(e.target.value) || 0)} />
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1 }}>
+          <Field label="Začátek">
+            <input type="time" style={inputStyle} value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+          </Field>
+        </div>
+        <div style={{ flex: 1 }}>
+          <Field label="Konec">
+            <input type="time" style={inputStyle} value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+          </Field>
+        </div>
+      </div>
+
+      <Field label="Pauza (min)">
+        <input type="number" min="0" style={inputStyle} value={pauseMin} onChange={(e) => setPauseMin(e.target.value)} />
       </Field>
-      {shiftType && effectivePause !== (shiftType.pause_min || 0) && (
-        <button onClick={() => setPauseMin(shiftType.pause_min || 0)} style={{ background: "none", border: "none", color: C.blue, fontSize: 13, padding: 0, marginTop: -8, marginBottom: 14, cursor: "pointer" }}>
-          vrátit na výchozí {shiftType.pause_min || 0} min
-        </button>
-      )}
+
       {employer?.track_tips !== false && (
-        <Field label="Dýška (Kč, nepovinné)"><input type="number" min="0" style={inputStyle} value={tip} onChange={(e) => setTip(e.target.value)} /></Field>
+        <Field label="Dýška (Kč, nepovinné)">
+          <input type="number" min="0" style={inputStyle} value={tip} onChange={(e) => setTip(e.target.value)} />
+        </Field>
       )}
+
       <Field label="Stav směny">
         <select style={inputStyle} value={status} onChange={(e) => setStatus(e.target.value)}>
           {SHIFT_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
         </select>
       </Field>
+
       <Field label="Poznámka (nepovinné)">
-        <textarea style={{ ...inputStyle, minHeight: 82, resize: "vertical" }} placeholder="Např. záskok za kolegu" value={note} onChange={(e) => setNote(e.target.value)} />
+        <textarea
+          style={{ ...inputStyle, minHeight: 82, resize: "vertical" }}
+          placeholder="Např. záskok za Kiku"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
       </Field>
-      {shiftType && employer && (
+
+      {previewType && employer && (
         <div style={{ background: C.card, borderRadius: 10, padding: "10px 14px", marginBottom: 6, display: "flex", justifyContent: "space-between" }}>
           <span style={{ fontSize: 13, color: C.sub }}>{previewHours} h po odečtení pauzy</span>
           <span style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>{fmtK(previewPay)} Kč</span>
         </div>
       )}
+
       <ErrorText>{error}</ErrorText>
       <PrimaryButton onClick={submit}>Uložit směnu</PrimaryButton>
     </Sheet>
@@ -398,6 +471,9 @@ function EditShiftSheet({ shift, userId, employers, shiftTypes, onClose, onSaved
   const [date, setDate] = useState(shift.shift_date || "");
   const [employerId, setEmployerId] = useState(shift.employer_id || employers[0]?.id || "");
   const [shiftTypeId, setShiftTypeId] = useState(shift.shift_type_id || shiftTypes[0]?.id || "");
+  const initialShiftType = shiftTypes.find((s) => s.id === (shift.shift_type_id || shiftTypes[0]?.id));
+  const [startTime, setStartTime] = useState(shift.custom_start_time || initialShiftType?.start_time || "08:00");
+  const [endTime, setEndTime] = useState(shift.custom_end_time || initialShiftType?.end_time || "16:00");
   const [tip, setTip] = useState(String(shift.tip ?? 0));
   const [pauseMin, setPauseMin] = useState(shift.pause_override_min ?? "");
   const [status, setStatus] = useState(shift.status || "worked");
@@ -426,6 +502,9 @@ function EditShiftSheet({ shift, userId, employers, shiftTypes, onClose, onSaved
         pause_override_min: effectivePause,
         status,
         note: note.trim() || null,
+        custom_start_time: startTime,
+        custom_end_time: endTime,
+        custom_surcharge_pct: shift.custom_surcharge_pct ?? initialShiftType?.surcharge_pct ?? 0,
       })
       .eq("id", shift.id);
 
@@ -455,6 +534,9 @@ function EditShiftSheet({ shift, userId, employers, shiftTypes, onClose, onSaved
       pause_override_min: effectivePause,
       status: "planned",
       note: note.trim() || null,
+      custom_start_time: startTime,
+      custom_end_time: endTime,
+      custom_surcharge_pct: shift.custom_surcharge_pct ?? initialShiftType?.surcharge_pct ?? 0,
     });
 
     setSaving(false);
@@ -491,11 +573,18 @@ function EditShiftSheet({ shift, userId, employers, shiftTypes, onClose, onSaved
         </select>
       </Field>
 
-      <Field label="Typ směny">
-        <select style={inputStyle} value={shiftTypeId} onChange={(e) => { setShiftTypeId(e.target.value); setPauseMin(""); }}>
-          {shiftTypes.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.start_time}–{s.end_time})</option>)}
-        </select>
-      </Field>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1 }}>
+          <Field label="Začátek">
+            <input type="time" style={inputStyle} value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+          </Field>
+        </div>
+        <div style={{ flex: 1 }}>
+          <Field label="Konec">
+            <input type="time" style={inputStyle} value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+          </Field>
+        </div>
+      </div>
 
       <Field label="Pauza (min)">
         <input type="number" min="0" style={inputStyle} value={effectivePause} onChange={(e) => setPauseMin(e.target.value)} />
@@ -516,7 +605,7 @@ function EditShiftSheet({ shift, userId, employers, shiftTypes, onClose, onSaved
       <Field label="Poznámka (nepovinné)">
         <textarea
           style={{ ...inputStyle, minHeight: 88, resize: "vertical" }}
-          placeholder="Např. záskok za kolegu"
+          placeholder="Např. záskok za Kiku"
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
@@ -557,7 +646,10 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName }) {
     empShifts.forEach((s) => {
       const st = shiftTypes.find((t) => t.id === s.shift_type_id);
       if (!st) return;
-      wage += payForShift(s, emp, st); tips += Number(s.tip) || 0; hours += hoursForShift(s, st);
+      const effectiveType = resolvedShiftType(s, st);
+      wage += payForShift(s, emp, effectiveType);
+      tips += Number(s.tip) || 0;
+      hours += hoursForShift(s, effectiveType);
     });
     return { ...emp, wage, tips, hours };
   });
@@ -653,9 +745,10 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit })
             const emp = employers.find((e) => e.id === s.employer_id);
             const st = shiftTypes.find((t) => t.id === s.shift_type_id);
             if (!emp || !st) return null;
-            const Icon = ICONS[st.icon] || Sun;
-            const hours = hoursForShift(s, st);
-            const pay = payForShift(s, emp, st);
+            const effectiveType = resolvedShiftType(s, st);
+            const Icon = ICONS[st.icon] || Clock;
+            const hours = hoursForShift(s, effectiveType);
+            const pay = payForShift(s, emp, effectiveType);
             const dateObj = new Date(s.shift_date + "T00:00:00");
             const statusMeta = shiftStatusMeta(s.status || "worked");
 
@@ -680,7 +773,11 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit })
                 <IconBadge Icon={Icon} color={ICON_COLORS[st.icon] || C.blue} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <p style={{ fontSize: 15, color: C.ink, margin: 0 }}>{st.name}{s.started_at ? " · živě" : ""}</p>
+                    <p style={{ fontSize: 15, color: C.ink, margin: 0 }}>
+                      {shiftTitle(s, st)}
+                      {s.custom_start_time && s.custom_end_time ? ` · ${s.custom_start_time}–${s.custom_end_time}` : ""}
+                      {s.started_at ? " · živě" : ""}
+                    </p>
                     <span style={{ fontSize: 10, fontWeight: 600, color: statusMeta.color, background: statusMeta.bg, borderRadius: 6, padding: "2px 6px" }}>
                       {statusMeta.label}
                     </span>
@@ -775,7 +872,7 @@ function SettingsScreen({ employers, shiftTypes, onAddShiftType, onAddEmployer, 
               type="text"
               style={inputStyle}
               value={name}
-              placeholder="Např. Nikola"
+              placeholder="Např. Kristina"
               onChange={(e) => { setName(e.target.value); setNameMessage(""); setNameError(""); }}
             />
           </Field>
