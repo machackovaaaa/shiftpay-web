@@ -1223,17 +1223,40 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
               const active = m.key === monthKey;
               return (
                 <div key={m.key} style={{ flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", gap: 5 }}>
-                  <div
+                  <button
+                    type="button"
+                    onClick={() => setMonthKey(m.key)}
                     title={`${m.label}: ${fmtK(m.total)} Kč`}
+                    aria-label={`Zobrazit ${m.label}, ${fmtK(m.total)} Kč`}
                     style={{
                       width: "72%",
                       maxWidth: 30,
                       height,
+                      border: "none",
+                      padding: 0,
                       borderRadius: "7px 7px 4px 4px",
                       background: active ? C.blue : "var(--sp-trend)",
+                      cursor: "pointer",
+                      transition: "transform 120ms ease, background 120ms ease",
                     }}
                   />
-                  <span style={{ fontSize: 9, color: active ? C.blue : C.sub, fontWeight: active ? 700 : 500, textTransform: "capitalize" }}>{m.label}</span>
+                  <button
+                    type="button"
+                    onClick={() => setMonthKey(m.key)}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      padding: 0,
+                      cursor: "pointer",
+                      fontFamily: FONT,
+                      fontSize: 9,
+                      color: active ? C.blue : C.sub,
+                      fontWeight: active ? 700 : 500,
+                      textTransform: "capitalize",
+                    }}
+                  >
+                    {m.label}
+                  </button>
                 </div>
               );
             })}
