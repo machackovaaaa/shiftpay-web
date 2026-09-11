@@ -51,6 +51,38 @@ function shiftTitle(shift, shiftType) {
 
 
 const inputStyle = { width: "100%", boxSizing: "border-box", border: `0.5px solid ${C.line}`, borderRadius: 10, padding: "11px 12px", fontSize: 15, fontFamily: FONT, color: C.ink, background: C.card, outline: "none" };
+const selectStyle = {
+  ...inputStyle,
+  appearance: "none",
+  WebkitAppearance: "none",
+  MozAppearance: "none",
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%238A8D98' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E")`,
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "right 12px center",
+  backgroundSize: "12px 8px",
+  paddingRight: 36,
+};
+const monthSelectStyle = {
+  appearance: "none",
+  WebkitAppearance: "none",
+  MozAppearance: "none",
+  background: "#ECECF0",
+  border: "none",
+  borderRadius: 18,
+  padding: "8px 34px 8px 12px",
+  fontSize: 12,
+  fontWeight: 600,
+  color: C.ink,
+  textTransform: "capitalize",
+  whiteSpace: "nowrap",
+  outline: "none",
+  fontFamily: FONT,
+  maxWidth: 145,
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%238A8D98' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E")`,
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "right 12px center",
+  backgroundSize: "12px 8px",
+};
 
 function Field({ label, children }) {
   return <div style={{ marginBottom: 14 }}><label style={{ display: "block", fontSize: 13, fontWeight: 400, color: C.sub, marginBottom: 5 }}>{label}</label>{children}</div>;
@@ -222,7 +254,7 @@ function AddShiftSheet({ userId, employers, shiftTypes, onClose, onSaved, initia
   return (
     <Sheet title="Přidat směnu" onClose={onClose}>
       <Field label="Zaměstnavatel">
-        <select style={inputStyle} value={employerId} onChange={(e) => setEmployerId(e.target.value)}>
+        <select style={selectStyle} value={employerId} onChange={(e) => setEmployerId(e.target.value)}>
           {employers.map((e) => (
             <option key={e.id} value={e.id}>{e.name} ({typeLabel(e.type)})</option>
           ))}
@@ -257,7 +289,7 @@ function AddShiftSheet({ userId, employers, shiftTypes, onClose, onSaved, initia
       )}
 
       <Field label="Stav směny">
-        <select style={inputStyle} value={status} onChange={(e) => setStatus(e.target.value)}>
+        <select style={selectStyle} value={status} onChange={(e) => setStatus(e.target.value)}>
           {SHIFT_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
         </select>
       </Field>
@@ -314,12 +346,12 @@ function StartShiftSheet({ userId, employers, shiftTypes, onClose, onSaved }) {
   return (
     <Sheet title="Spustit směnu" onClose={onClose}>
       <Field label="Zaměstnavatel">
-        <select style={inputStyle} value={employerId} onChange={(e) => setEmployerId(e.target.value)}>
+        <select style={selectStyle} value={employerId} onChange={(e) => setEmployerId(e.target.value)}>
           {employers.map((e) => <option key={e.id} value={e.id}>{e.name} ({typeLabel(e.type)})</option>)}
         </select>
       </Field>
       <Field label="Typ směny">
-        <select style={inputStyle} value={shiftTypeId} onChange={(e) => { setShiftTypeId(e.target.value); setPauseMin(null); }}>
+        <select style={selectStyle} value={shiftTypeId} onChange={(e) => { setShiftTypeId(e.target.value); setPauseMin(null); }}>
           {shiftTypes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </Field>
@@ -403,7 +435,7 @@ function AddEmployerSheet({ userId, onClose, onSaved }) {
           ))}
         </div>
       </Field>
-      <Field label="Typ smlouvy"><select style={inputStyle} value={type} onChange={(e) => setType(e.target.value)}><option value="DPP">DPP</option><option value="DPC">DPČ</option></select></Field>
+      <Field label="Typ smlouvy"><select style={selectStyle} value={type} onChange={(e) => setType(e.target.value)}><option value="DPP">DPP</option><option value="DPC">DPČ</option></select></Field>
       <Field label="Hodinová sazba (Kč)"><input type="number" min="0" style={inputStyle} placeholder="150" value={rate} onChange={(e) => setRate(e.target.value)} /></Field>
       <Field label="Dýška">
         <button onClick={() => setTrackTips((v) => !v)} style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: 0, cursor: "pointer" }}>
@@ -568,7 +600,7 @@ function EditShiftSheet({ shift, userId, employers, shiftTypes, onClose, onSaved
       </Field>
 
       <Field label="Zaměstnavatel">
-        <select style={inputStyle} value={employerId} onChange={(e) => setEmployerId(e.target.value)}>
+        <select style={selectStyle} value={employerId} onChange={(e) => setEmployerId(e.target.value)}>
           {employers.map((e) => <option key={e.id} value={e.id}>{e.name} ({typeLabel(e.type)})</option>)}
         </select>
       </Field>
@@ -597,7 +629,7 @@ function EditShiftSheet({ shift, userId, employers, shiftTypes, onClose, onSaved
       )}
 
       <Field label="Stav směny">
-        <select style={inputStyle} value={status} onChange={(e) => setStatus(e.target.value)}>
+        <select style={selectStyle} value={status} onChange={(e) => setStatus(e.target.value)}>
           {SHIFT_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
         </select>
       </Field>
@@ -717,20 +749,7 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
           <select
             value={monthKey}
             onChange={(e) => setMonthKey(e.target.value)}
-            style={{
-              background: "#ECECF0",
-              border: "none",
-              borderRadius: 18,
-              padding: "8px 12px",
-              fontSize: 12,
-              fontWeight: 600,
-              color: C.ink,
-              textTransform: "capitalize",
-              whiteSpace: "nowrap",
-              outline: "none",
-              fontFamily: FONT,
-              maxWidth: 145,
-            }}
+            style={monthSelectStyle}
             aria-label="Vybrat měsíc"
           >
             {availableMonths.map((key) => {
