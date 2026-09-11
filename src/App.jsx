@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Sun, Sunset, Moon, Plus, Home, Calendar, Settings as SettingsIcon, Coins, Trash2, LogOut, X, Play, Square } from "lucide-react";
 import { supabase } from "./lib/supabase";
-import { computeHours, computePay, hoursForShift, payForShift, isLiveShift, liveElapsedLabel, rawDurationLabel, fmtK, typeLabel } from "./lib/calc";
+import { computeHours, computePay, hoursForShift, payForShift, effectivePauseMin, isLiveShift, liveElapsedLabel, rawDurationLabel, fmtK, typeLabel } from "./lib/calc";
 import Login from "./components/Login";
 
 const C = {
@@ -86,14 +86,19 @@ function AddShiftSheet({ userId, employers, shiftTypes, onClose, onSaved }) {
   const [employerId, setEmployerId] = useState(employers[0]?.id || "");
   const [shiftTypeId, setShiftTypeId] = useState(shiftTypes[0]?.id || "");
   const [tip, setTip] = useState("");
+  const [pauseMin, setPauseMin] = useState(null);
   const [error, setError] = useState("");
   const employer = employers.find((e) => e.id === employerId);
   const shiftType = shiftTypes.find((s) => s.id === shiftTypeId);
+  const effectivePause = pauseMin !== null ? pauseMin : (shiftType?.pause_min || 0);
+  const previewHours = shiftType ? hoursForShift({ pause_override_min: effectivePause }, shiftType) : 0;
+  const previewPay = employer && shiftType ? payForShift({ pause_override_min: effectivePause }, employer, shiftType) : 0;
 
   const submit = async () => {
     if (!date || !employerId || !shiftTypeId) { setError("Vyplň datum, zaměstnavatele a typ směny."); return; }
     const { error: err } = await supabase.from("shifts").insert({
       user_id: userId, employer_id: employerId, shift_type_id: shiftTypeId, shift_date: date, tip: Number(tip) || 0,
+      pause_override_min: effectivePause,
     });
     if (err) { setError(err.message); return; }
     onSaved();
@@ -113,17 +118,25 @@ function AddShiftSheet({ userId, employers, shiftTypes, onClose, onSaved }) {
         </select>
       </Field>
       <Field label="Typ směny">
-        <select style={inputStyle} value={shiftTypeId} onChange={(e) => setShiftTypeId(e.target.value)}>
+        <select style={inputStyle} value={shiftTypeId} onChange={(e) => { setShiftTypeId(e.target.value); setPauseMin(null); }}>
           {shiftTypes.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.start_time}–{s.end_time})</option>)}
         </select>
       </Field>
+      <Field label="Pauza tenhle den (min)">
+        <input type="number" min="0" style={inputStyle} value={effectivePause} onChange={(e) => setPauseMin(Number(e.target.value) || 0)} />
+      </Field>
+      {shiftType && effectivePause !== (shiftType.pause_min || 0) && (
+        <button onClick={() => setPauseMin(shiftType.pause_min || 0)} style={{ background: "none", border: "none", color: C.coralDeep, fontSize: 12, padding: 0, marginTop: -8, marginBottom: 14, cursor: "pointer" }}>
+          vrátit na výchozí {shiftType.pause_min || 0} min
+        </button>
+      )}
       {employer?.track_tips !== false && (
         <Field label="Dýška (Kč, nepovinné)"><input type="number" min="0" style={inputStyle} value={tip} onChange={(e) => setTip(e.target.value)} /></Field>
       )}
       {shiftType && employer && (
         <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, padding: "10px 14px", marginBottom: 6, display: "flex", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 12, color: C.sub }}>{computeHours(shiftType)} h po odečtení pauzy</span>
-          <span style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>{fmtK(computePay(employer, shiftType))} Kč</span>
+          <span style={{ fontSize: 12, color: C.sub }}>{previewHours} h po odečtení pauzy</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>{fmtK(previewPay)} Kč</span>
         </div>
       )}
       <ErrorText>{error}</ErrorText>
@@ -135,7 +148,10 @@ function AddShiftSheet({ userId, employers, shiftTypes, onClose, onSaved }) {
 function StartShiftSheet({ userId, employers, shiftTypes, onClose, onSaved }) {
   const [employerId, setEmployerId] = useState(employers[0]?.id || "");
   const [shiftTypeId, setShiftTypeId] = useState(shiftTypes[0]?.id || "");
+  const [pauseMin, setPauseMin] = useState(null);
   const [error, setError] = useState("");
+  const shiftType = shiftTypes.find((s) => s.id === shiftTypeId);
+  const effectivePause = pauseMin !== null ? pauseMin : (shiftType?.pause_min || 0);
 
   const submit = async () => {
     if (!employerId || !shiftTypeId) { setError("Vyber zaměstnavatele a typ směny."); return; }
@@ -143,7 +159,7 @@ function StartShiftSheet({ userId, employers, shiftTypes, onClose, onSaved }) {
     const { error: err } = await supabase.from("shifts").insert({
       user_id: userId, employer_id: employerId, shift_type_id: shiftTypeId,
       shift_date: now.toISOString().slice(0, 10), tip: 0,
-      started_at: now.toISOString(), ended_at: null,
+      started_at: now.toISOString(), ended_at: null, pause_override_min: effectivePause,
     });
     if (err) { setError(err.message); return; }
     onSaved();
@@ -162,11 +178,20 @@ function StartShiftSheet({ userId, employers, shiftTypes, onClose, onSaved }) {
         </select>
       </Field>
       <Field label="Typ směny">
-        <select style={inputStyle} value={shiftTypeId} onChange={(e) => setShiftTypeId(e.target.value)}>
+        <select style={inputStyle} value={shiftTypeId} onChange={(e) => { setShiftTypeId(e.target.value); setPauseMin(null); }}>
           {shiftTypes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </Field>
-      <p style={{ fontSize: 12, color: C.sub, margin: "0 0 6px" }}>Pauza se odečte podle nastavení typu směny, hodiny se počítají podle skutečného odpracovaného času.</p>
+      <Field label="Pauza dnes (min)">
+        <input type="number" min="0" style={inputStyle} value={effectivePause} onChange={(e) => setPauseMin(Number(e.target.value) || 0)} />
+      </Field>
+      <div style={{ display: "flex", gap: 8, marginTop: -8, marginBottom: 14 }}>
+        <button onClick={() => setPauseMin(0)} style={{ fontSize: 11, color: effectivePause === 0 ? "#fff" : C.coralDeep, background: effectivePause === 0 ? C.coral : "none", border: `1px solid ${C.coral}`, borderRadius: 8, padding: "4px 10px", cursor: "pointer" }}>bez pauzy dnes</button>
+        {shiftType && (
+          <button onClick={() => setPauseMin(shiftType.pause_min || 0)} style={{ fontSize: 11, color: effectivePause === (shiftType.pause_min || 0) ? "#fff" : C.coralDeep, background: effectivePause === (shiftType.pause_min || 0) ? C.coral : "none", border: `1px solid ${C.coral}`, borderRadius: 8, padding: "4px 10px", cursor: "pointer" }}>výchozí {shiftType.pause_min || 0} min</button>
+        )}
+      </div>
+      <p style={{ fontSize: 12, color: C.sub, margin: "0 0 6px" }}>Hodiny se počítají podle skutečného odpracovaného času, mínus pauza nastavená výše.</p>
       <ErrorText>{error}</ErrorText>
       <PrimaryButton onClick={submit}>Start směny teď</PrimaryButton>
     </Sheet>

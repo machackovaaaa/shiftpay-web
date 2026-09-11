@@ -19,14 +19,28 @@ export function isLiveShift(shift) {
   return !!shift.started_at && !shift.ended_at;
 }
 
+export function effectivePauseMin(shift, shiftType) {
+  if (shift.pause_override_min !== undefined && shift.pause_override_min !== null) return shift.pause_override_min;
+  return shiftType?.pause_min || 0;
+}
+
 export function hoursForShift(shift, shiftType) {
   if (shift.started_at && shift.ended_at) {
     const ms = new Date(shift.ended_at) - new Date(shift.started_at);
-    const pauseMin = shiftType?.pause_min || 0;
+    const pauseMin = effectivePauseMin(shift, shiftType);
     const hours = ms / 3600000 - pauseMin / 60;
     return Math.max(0, Math.round(hours * 100) / 100);
   }
-  if (shiftType) return computeHours(shiftType);
+  if (shiftType) {
+    const [sh, sm] = shiftType.start_time.split(":").map(Number);
+    const [eh, em] = shiftType.end_time.split(":").map(Number);
+    let startMin = sh * 60 + sm;
+    let endMin = eh * 60 + em;
+    if (endMin <= startMin) endMin += 24 * 60;
+    const pauseMin = effectivePauseMin(shift, shiftType);
+    const worked = (endMin - startMin - pauseMin) / 60;
+    return Math.max(0, Math.round(worked * 100) / 100);
+  }
   return 0;
 }
 
