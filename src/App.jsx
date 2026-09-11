@@ -6,7 +6,7 @@ import Login from "./components/Login";
 
 const FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif";
 const C = {
-  bg: "#F2F2F7", card: "#FFFFFF", ink: "#1C1C1E", sub: "#8E8E93", line: "#E5E5EA",
+  bg: "var(--sp-bg)", card: "var(--sp-card)", ink: "var(--sp-ink)", sub: "var(--sp-sub)", line: "var(--sp-line)",
   blue: "#007AFF", green: "#34C759", orange: "#FF9500", purple: "#5E5CE6", red: "#FF3B30",
   black: "#000000",
 };
@@ -22,9 +22,9 @@ const DEFAULT_SHIFT_TYPES = [
 ];
 
 const SHIFT_STATUSES = [
-  { id: "planned", label: "Plánovaná", color: C.blue, bg: "#E8F1FF" },
-  { id: "worked", label: "Odpracovaná", color: C.green, bg: "#E9F9ED" },
-  { id: "cancelled", label: "Zrušená", color: C.red, bg: "#FFE9E7" },
+  { id: "planned", label: "Plánovaná", color: C.blue, bg: "var(--sp-blue-soft)" },
+  { id: "worked", label: "Odpracovaná", color: C.green, bg: "var(--sp-green-soft)" },
+  { id: "cancelled", label: "Zrušená", color: C.red, bg: "var(--sp-red-soft)" },
 ];
 
 function shiftStatusMeta(status) {
@@ -66,7 +66,7 @@ const monthSelectStyle = {
   appearance: "none",
   WebkitAppearance: "none",
   MozAppearance: "none",
-  background: "#ECECF0",
+  background: "var(--sp-control)",
   border: "none",
   borderRadius: 18,
   padding: "8px 34px 8px 12px",
@@ -137,7 +137,7 @@ function SpayBadge() {
 
 function TopBrandBar() {
   return (
-    <div style={{ position: "sticky", top: 0, zIndex: 5, background: "rgba(242,242,247,0.85)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderBottom: `0.5px solid ${C.line}`, padding: "8px 0", display: "flex", justifyContent: "center" }}>
+    <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--sp-bar)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderBottom: `0.5px solid ${C.line}`, padding: "8px 0", display: "flex", justifyContent: "center" }}>
       <SpayBadge />
     </div>
   );
@@ -485,7 +485,7 @@ function AddShiftTypeSheet({ userId, onClose, onSaved }) {
             const Ic = ICONS[name2]; const isSel = icon === name2;
             return (
               <button key={name2} onClick={() => setIcon(name2)} aria-label={name2}
-                style={{ width: 40, height: 40, borderRadius: 12, cursor: "pointer", border: isSel ? `1.5px solid ${C.blue}` : `0.5px solid ${C.line}`, background: isSel ? "#E8F1FF" : C.card }}>
+                style={{ width: 40, height: 40, borderRadius: 12, cursor: "pointer", border: isSel ? `1.5px solid ${C.blue}` : `0.5px solid ${C.line}`, background: isSel ? "var(--sp-blue-soft)" : C.card }}>
                 <Ic size={17} color={isSel ? C.blue : C.sub} />
               </button>
             );
@@ -649,14 +649,14 @@ function EditShiftSheet({ shift, userId, employers, shiftTypes, onClose, onSaved
         <button
           onClick={duplicate}
           disabled={saving}
-          style={{ flex: 1, border: "none", borderRadius: 12, padding: "12px 0", background: "#E8F1FF", color: C.blue, fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 6 }}
+          style={{ flex: 1, border: "none", borderRadius: 12, padding: "12px 0", background: "var(--sp-blue-soft)", color: C.blue, fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 6 }}
         >
           <Copy size={15} /> Duplikovat
         </button>
         <button
           onClick={remove}
           disabled={saving}
-          style={{ flex: 1, border: "none", borderRadius: 12, padding: "12px 0", background: "#FFE9E7", color: C.red, fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 6 }}
+          style={{ flex: 1, border: "none", borderRadius: 12, padding: "12px 0", background: "var(--sp-red-soft)", color: C.red, fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 6 }}
         >
           <Trash2 size={15} /> Smazat
         </button>
@@ -721,6 +721,40 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
   const monthTotal = workedTotals.total;
   const monthHours = workedTotals.hours;
 
+  const monthTotalsForKey = (key) => {
+    const items = shifts.filter((s) =>
+      s.shift_date?.startsWith(key) &&
+      !isLiveShift(s) &&
+      (s.status || "worked") === "worked"
+    );
+    return totalsForShifts(items);
+  };
+
+  const previousMonthDate = new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1);
+  const previousMonthKey = `${previousMonthDate.getFullYear()}-${String(previousMonthDate.getMonth() + 1).padStart(2, "0")}`;
+  const previousTotals = monthTotalsForKey(previousMonthKey);
+
+  const earningsChange = previousTotals.total > 0
+    ? ((workedTotals.total - previousTotals.total) / previousTotals.total) * 100
+    : null;
+  const hoursChange = previousTotals.hours > 0
+    ? ((workedTotals.hours - previousTotals.hours) / previousTotals.hours) * 100
+    : null;
+
+  const trendMonths = Array.from({ length: 6 }, (_, index) => {
+    const d = new Date(monthDate.getFullYear(), monthDate.getMonth() - (5 - index), 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const totals = monthTotalsForKey(key);
+    return {
+      key,
+      label: d.toLocaleDateString("cs-CZ", { month: "short" }).replace(".", ""),
+      total: totals.total,
+      hours: totals.hours,
+    };
+  });
+
+  const trendMax = Math.max(1, ...trendMonths.map((m) => m.total));
+
   const upcoming = [...plannedShifts]
     .sort((a, b) => a.shift_date.localeCompare(b.shift_date))
     .slice(0, 3);
@@ -767,7 +801,7 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
               height: 36,
               borderRadius: "50%",
               border: "none",
-              background: "#ECECF0",
+              background: "var(--sp-control)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -782,7 +816,7 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
 
       <div style={{
         margin: "22px 16px 0",
-        background: "linear-gradient(135deg, #F0EAFF 0%, #EAF3FF 100%)",
+        background: "linear-gradient(135deg, var(--sp-purple-soft) 0%, var(--sp-blue-soft) 100%)",
         borderRadius: 18,
         padding: "18px 18px 16px",
         boxShadow: "0 1px 0 rgba(0,0,0,0.03)",
@@ -818,13 +852,88 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-          {tile("Počet směn", String(workedShifts.length), "#EAF3FF", C.blue)}
-          {tile("Odpracováno", `${Math.round(monthHours * 10) / 10} h`, "#E9F8EE", C.green)}
-          {tile("Mzda", `${fmtK(wageTotal)} Kč`, "#FFF3DD", "#C77A00")}
+          {tile("Počet směn", String(workedShifts.length), "var(--sp-blue-soft)", C.blue)}
+          {tile("Odpracováno", `${Math.round(monthHours * 10) / 10} h`, "var(--sp-green-soft)", C.green)}
+          {tile("Mzda", `${fmtK(wageTotal)} Kč`, "var(--sp-orange-soft)", "#C77A00")}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
-          {tile("Dýška", `${fmtK(tipsTotal)} Kč`, "#FFE9EC", "#E23B50")}
-          {tile("Celkem", `${fmtK(monthTotal)} Kč`, "#F0EAFF", "#6C48D7")}
+          {tile("Dýška", `${fmtK(tipsTotal)} Kč`, "var(--sp-red-soft)", "#E23B50")}
+          {tile("Celkem", `${fmtK(monthTotal)} Kč`, "var(--sp-purple-soft)", "#6C48D7")}
+        </div>
+      </div>
+
+      <div style={{ margin: "14px 16px 0", background: C.card, borderRadius: 18, padding: "15px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <div>
+            <p style={{ fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 }}>Trendy</p>
+            <p style={{ fontSize: 11, color: C.sub, margin: "4px 0 0" }}>Porovnání s minulým měsícem</p>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <p style={{ fontSize: 11, color: C.sub, margin: 0 }}>Výdělek</p>
+            <p style={{
+              fontSize: 13,
+              fontWeight: 700,
+              color: earningsChange == null ? C.sub : earningsChange >= 0 ? C.green : C.red,
+              margin: "2px 0 0"
+            }}>
+              {earningsChange == null ? "Bez srovnání" : `${earningsChange >= 0 ? "+" : ""}${Math.round(earningsChange)} %`}
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 13 }}>
+          <div style={{ background: "var(--sp-muted-card)", borderRadius: 13, padding: "11px 12px" }}>
+            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>Tento měsíc</p>
+            <p style={{ fontSize: 17, fontWeight: 700, color: C.ink, margin: "4px 0 0" }}>{fmtK(workedTotals.total)} Kč</p>
+          </div>
+          <div style={{ background: "var(--sp-muted-card)", borderRadius: 13, padding: "11px 12px" }}>
+            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>Minulý měsíc</p>
+            <p style={{ fontSize: 17, fontWeight: 700, color: C.ink, margin: "4px 0 0" }}>{fmtK(previousTotals.total)} Kč</p>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 15 }}>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 7, height: 92 }}>
+            {trendMonths.map((m) => {
+              const height = m.total <= 0 ? 5 : Math.max(10, Math.round((m.total / trendMax) * 78));
+              const active = m.key === monthKey;
+              return (
+                <div key={m.key} style={{ flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", gap: 5 }}>
+                  <div
+                    title={`${m.label}: ${fmtK(m.total)} Kč`}
+                    style={{
+                      width: "72%",
+                      maxWidth: 30,
+                      height,
+                      borderRadius: "7px 7px 4px 4px",
+                      background: active ? C.blue : "var(--sp-trend)",
+                    }}
+                  />
+                  <span style={{ fontSize: 9, color: active ? C.blue : C.sub, fontWeight: active ? 700 : 500, textTransform: "capitalize" }}>{m.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ height: 1, background: C.line, margin: "13px 0 11px" }} />
+
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>Odpracované hodiny</p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: "3px 0 0" }}>{Math.round(workedTotals.hours * 10) / 10} h</p>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <p style={{ fontSize: 10, color: C.sub, margin: 0 }}>vs. minulý měsíc</p>
+            <p style={{
+              fontSize: 13,
+              fontWeight: 700,
+              color: hoursChange == null ? C.sub : hoursChange >= 0 ? C.green : C.red,
+              margin: "3px 0 0"
+            }}>
+              {hoursChange == null ? "Bez srovnání" : `${hoursChange >= 0 ? "+" : ""}${Math.round(hoursChange)} %`}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -858,7 +967,7 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
 
                 {e.monthly_limit && (
                   <div style={{ margin: "11px 0 0 46px" }}>
-                    <div style={{ height: 6, background: "#E4E5E9", borderRadius: 4, overflow: "hidden" }}>
+                    <div style={{ height: 6, background: "var(--sp-line)", borderRadius: 4, overflow: "hidden" }}>
                       <div style={{
                         height: "100%",
                         width: `${percent}%`,
@@ -1149,7 +1258,7 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit, r
           border: "none",
           borderRadius: 16,
           padding: "8px 11px",
-          background: active ? "#EAF3FF" : C.card,
+          background: active ? "var(--sp-blue-soft)" : C.card,
           color: active ? C.blue : C.ink,
           fontSize: 11,
           fontWeight: active ? 700 : 500,
@@ -1237,7 +1346,7 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit, r
           fontFamily: FONT,
         }}
       >
-        <div style={{ width: 34, height: 34, borderRadius: 12, background: "#EAF3FF", display: "flex", alignItems: "center", justifyContent: "center", color: C.blue }}>
+        <div style={{ width: 34, height: 34, borderRadius: 12, background: "var(--sp-blue-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: C.blue }}>
           <Plus size={18} />
         </div>
         <div style={{ flex: 1 }}>
@@ -1264,7 +1373,7 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit, r
               margin: "14px 16px 0",
               width: "calc(100% - 32px)",
               border: "1px solid #D9E8FF",
-              background: "#EEF6FF",
+              background: "var(--sp-blue-panel)",
               borderRadius: 18,
               padding: "15px 16px",
               textAlign: "left",
@@ -1284,7 +1393,7 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit, r
                   {d.toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric", year: "numeric" })} · {effectiveType.start_time}–{effectiveType.end_time} · {typeLabel(emp.type)}
                 </p>
               </div>
-              <span style={{ fontSize: 9, fontWeight: 700, color: C.blue, background: "#DDEBFF", borderRadius: 8, padding: "3px 7px" }}>Plánovaná</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: C.blue, background: "var(--sp-blue-soft)", borderRadius: 8, padding: "3px 7px" }}>Plánovaná</span>
               <div style={{ textAlign: "right", flexShrink: 0 }}>
                 <p style={{ fontSize: 13, color: C.ink, margin: 0 }}>{fmtK(pay + (Number(nextShift.tip) || 0))} Kč</p>
                 <p style={{ fontSize: 11, color: C.sub, margin: "2px 0 0" }}>{Math.round(hours * 10) / 10} h</p>
@@ -1405,7 +1514,7 @@ function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift }) {
                   aspectRatio: "1 / 1",
                   border: "none",
                   borderRadius: 12,
-                  background: isSelected ? "#EAF3FF" : "transparent",
+                  background: isSelected ? "var(--sp-blue-soft)" : "transparent",
                   outline: isToday ? `1.5px solid ${C.blue}` : "none",
                   cursor: "pointer",
                   padding: 4,
@@ -1450,7 +1559,7 @@ function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift }) {
             onClick={() => onAddShift(selectedDate)}
             style={{
               border: "none",
-              background: "#EAF3FF",
+              background: "var(--sp-blue-soft)",
               color: C.blue,
               borderRadius: 10,
               padding: "7px 10px",
@@ -1524,7 +1633,7 @@ function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift }) {
   );
 }
 
-function SettingsScreen({ employers, shiftTypes, onAddShiftType, onAddEmployer, onLogout, refresh, session, onProfileUpdated }) {
+function SettingsScreen({ employers, shiftTypes, onAddShiftType, onAddEmployer, onLogout, refresh, session, onProfileUpdated, darkMode, onToggleDarkMode }) {
   const [name, setName] = useState(session?.user?.user_metadata?.full_name || "");
   const [savingName, setSavingName] = useState(false);
   const [nameMessage, setNameMessage] = useState("");
@@ -1594,12 +1703,62 @@ function SettingsScreen({ employers, shiftTypes, onAddShiftType, onAddEmployer, 
           </Field>
           <p style={{ fontSize: 12, color: C.sub, margin: "-7px 0 12px" }}>Tohle jméno se bude zobrazovat v aplikaci, například v pozdravu.</p>
           <Field label="E-mail">
-            <input type="email" style={{ ...inputStyle, background: "#F2F2F7", color: C.sub }} value={session?.user?.email || ""} disabled />
+            <input type="email" style={{ ...inputStyle, background: "var(--sp-muted-card)", color: C.sub }} value={session?.user?.email || ""} disabled />
           </Field>
           <ErrorText>{nameError}</ErrorText>
           {nameMessage && <p style={{ fontSize: 13, color: C.green, margin: "4px 0 0" }}>{nameMessage}</p>}
           <PrimaryButton onClick={saveName} disabled={savingName}>{savingName ? "Ukládám…" : "Uložit jméno"}</PrimaryButton>
         </div>
+      </GroupedList>
+
+      <SectionHeader>Vzhled</SectionHeader>
+      <GroupedList>
+        <button
+          type="button"
+          onClick={onToggleDarkMode}
+          style={{
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "13px 14px",
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            textAlign: "left",
+            fontFamily: FONT,
+          }}
+        >
+          <div style={{
+            width: 34,
+            height: 34,
+            borderRadius: 11,
+            background: darkMode ? "var(--sp-purple-soft)" : "var(--sp-orange-soft)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}>
+            {darkMode ? <Moon size={17} color={C.purple} /> : <Sun size={17} color={C.orange} />}
+          </div>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 15, color: C.ink, margin: 0 }}>Tmavý režim</p>
+            <p style={{ fontSize: 12, color: C.sub, margin: "2px 0 0" }}>{darkMode ? "Zapnuto" : "Vypnuto"}</p>
+          </div>
+          <div style={{
+            width: 46,
+            height: 26,
+            padding: 3,
+            borderRadius: 15,
+            background: darkMode ? C.blue : C.line,
+            boxSizing: "border-box",
+            display: "flex",
+            justifyContent: darkMode ? "flex-end" : "flex-start",
+            transition: "all 180ms ease",
+          }}>
+            <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.18)" }} />
+          </div>
+        </button>
       </GroupedList>
 
       <SectionHeader>Typy směn</SectionHeader>
@@ -1629,7 +1788,7 @@ function SettingsScreen({ employers, shiftTypes, onAddShiftType, onAddEmployer, 
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 3 }}>
               <IconBadge Icon={EmpIcon} color={e.icon_color || C.blue} small />
               <p style={{ fontSize: 15, color: C.ink, margin: 0, flex: 1 }}>{e.name}</p>
-              <span style={{ fontSize: 11, fontWeight: 600, color: C.blue, background: "#E8F1FF", borderRadius: 6, padding: "2px 8px" }}>{typeLabel(e.type)}</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: C.blue, background: "var(--sp-blue-soft)", borderRadius: 6, padding: "2px 8px" }}>{typeLabel(e.type)}</span>
               <button onClick={() => removeEmployer(e.id)} aria-label="Smazat zaměstnavatele" style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={14} color={C.line} /></button>
             </div>
             <p style={{ fontSize: 12, color: C.sub, margin: "0 0 2px 40px" }}>{e.rate} Kč / h</p>
@@ -1658,7 +1817,7 @@ function TabBar({ active, setActive }) {
     { id: "calendar", label: "Kalendář", Icon: Calendar },
   ];
   return (
-    <div style={{ position: "sticky", bottom: 0, display: "flex", borderTop: `0.5px solid ${C.line}`, background: "rgba(242,242,247,0.92)", backdropFilter: "blur(10px)", padding: "8px 0 calc(8px + env(safe-area-inset-bottom))" }}>
+    <div style={{ position: "sticky", bottom: 0, display: "flex", borderTop: `0.5px solid ${C.line}`, background: "var(--sp-bar-strong)", backdropFilter: "blur(10px)", padding: "8px 0 calc(8px + env(safe-area-inset-bottom))" }}>
       {tabs.map(({ id, label, Icon }) => {
         const isActive = active === id;
         return (
@@ -1674,6 +1833,15 @@ function TabBar({ active, setActive }) {
 
 export default function App() {
   const [session, setSession] = useState(undefined);
+  const [darkMode, setDarkMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem("shiftpay-dark-mode");
+      if (saved !== null) return saved === "true";
+      return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches || false;
+    } catch {
+      return false;
+    }
+  });
   const [active, setActive] = useState("overview");
   const [sheet, setSheet] = useState(null);
   const [selectedShift, setSelectedShift] = useState(null);
@@ -1684,6 +1852,53 @@ export default function App() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("shiftpay-dark-mode", String(darkMode));
+    } catch {}
+    document.documentElement.style.colorScheme = darkMode ? "dark" : "light";
+    const themeMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeMeta) themeMeta.setAttribute("content", darkMode ? "#111114" : "#F2F2F7");
+  }, [darkMode]);
+
+  const themeVars = darkMode ? {
+    "--sp-bg": "#111114",
+    "--sp-card": "#1C1C1E",
+    "--sp-ink": "#F5F5F7",
+    "--sp-sub": "#A1A1A7",
+    "--sp-line": "#343438",
+    "--sp-control": "#2A2A2E",
+    "--sp-muted-card": "#242428",
+    "--sp-bar": "rgba(17,17,20,0.88)",
+    "--sp-bar-strong": "rgba(17,17,20,0.94)",
+    "--sp-blue-soft": "#172A43",
+    "--sp-green-soft": "#173523",
+    "--sp-red-soft": "#3B2021",
+    "--sp-purple-soft": "#29233F",
+    "--sp-orange-soft": "#3A2B17",
+    "--sp-trend": "#3A4351",
+    "--sp-blue-panel": "#172335",
+    "--sp-blue-border": "#29466D",
+  } : {
+    "--sp-bg": "#F2F2F7",
+    "--sp-card": "#FFFFFF",
+    "--sp-ink": "#1C1C1E",
+    "--sp-sub": "#8E8E93",
+    "--sp-line": "#E5E5EA",
+    "--sp-control": "#ECECF0",
+    "--sp-muted-card": "#F6F6F8",
+    "--sp-bar": "rgba(242,242,247,0.85)",
+    "--sp-bar-strong": "rgba(242,242,247,0.92)",
+    "--sp-blue-soft": "#EAF3FF",
+    "--sp-green-soft": "#E9F8EE",
+    "--sp-red-soft": "#FFE9EC",
+    "--sp-purple-soft": "#F0EAFF",
+    "--sp-orange-soft": "#FFF3DD",
+    "--sp-trend": "#DDE4EF",
+    "--sp-blue-panel": "#EEF6FF",
+    "--sp-blue-border": "#D9E8FF",
+  };
 
   const userId = session?.user?.id;
   const userName = displayName(session);
@@ -1699,10 +1914,16 @@ export default function App() {
   };
 
   if (session === undefined) return null;
-  if (!session) return <Login />;
+  if (!session) {
+    return (
+      <div style={{ ...themeVars, minHeight: "100vh", background: "var(--sp-bg)", color: "var(--sp-ink)" }}>
+        <Login />
+      </div>
+    );
+  }
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, fontFamily: FONT, display: "flex", flexDirection: "column" }}>
+    <div style={{ ...themeVars, minHeight: "100vh", background: C.bg, color: C.ink, fontFamily: FONT, display: "flex", flexDirection: "column" }}>
       <TopBrandBar />
       {liveShift && <LiveShiftBanner shift={liveShift} employer={liveEmployer} shiftType={liveShiftType} onStop={stopLiveShift} />}
       <div style={{ flex: 1 }}>
@@ -1713,7 +1934,7 @@ export default function App() {
             {active === "overview" && <OverviewScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} userName={userName} onOpenSettings={() => setActive("settings")} />}
             {active === "shifts" && <ShiftsScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onAdd={() => { setNewShiftDate(null); setSheet("shift"); }} onStart={() => setSheet("start")} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} refresh={refresh} />}
             {active === "calendar" && <CalendarScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} onAddShift={(date) => { setNewShiftDate(date); setSheet("shift"); }} />}
-            {active === "settings" && <SettingsScreen employers={employers} shiftTypes={shiftTypes} onAddShiftType={() => setSheet("shiftType")} onAddEmployer={() => setSheet("employer")} onLogout={() => supabase.auth.signOut()} refresh={refresh} session={session} onProfileUpdated={(user) => setSession((prev) => prev ? { ...prev, user } : prev)} />}
+            {active === "settings" && <SettingsScreen employers={employers} shiftTypes={shiftTypes} onAddShiftType={() => setSheet("shiftType")} onAddEmployer={() => setSheet("employer")} onLogout={() => supabase.auth.signOut()} refresh={refresh} session={session} onProfileUpdated={(user) => setSession((prev) => prev ? { ...prev, user } : prev)} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} />}
           </>
         )}
       </div>
