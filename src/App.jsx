@@ -1797,7 +1797,387 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit, r
   );
 }
 
-function CalendarScreen({ employers, shiftTypes, shifts, userName, onEdit, onAddShift, onOpenSettings }) {
+
+function ImportShiftsSheet({ userId, employers, shiftTypes, shifts, initialMonthKey, onClose, onSaved }) {
+  const [employerId, setEmployerId] = useState(employers[0]?.id || "");
+  const [monthKey, setMonthKey] = useState(initialMonthKey || new Date().toISOString().slice(0, 7));
+  const [fileName, setFileName] = useState("");
+  const [rows, setRows] = useState([]);
+  const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+  const [importing, setImporting] = useState(false);
+
+  const fallbackShiftType = shiftTypes[0];
+
+  const cellText = (cell) => {
+    if (!cell) return "";
+    const value = cell.value;
+    if (value == null) return "";
+    if (typeof value === "object") {
+      if (Array.isArray(value.richText)) return value.richText.map((x) => x.text || "").join("");
+      if ("result" in value && value.result != null) return String(value.result);
+      if ("text" in value && value.text != null) return String(value.text);
+    }
+    return String(cell.text ?? value ?? "").trim();
+  };
+
+  const normalize = (value) =>
+    String(value || "")
+      .trim()
+      .toUpperCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+  const parseTimeCell = (cell) => {
+    if (!cell) return "";
+    const value = cell.value;
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return `${String(value.getHours()).padStart(2, "0")}:${String(value.getMinutes()).padStart(2, "0")}`;
+    }
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      const fraction = ((value % 1) + 1) % 1;
+      const totalMinutes = Math.round(fraction * 24 * 60) % (24 * 60);
+      const hh = Math.floor(totalMinutes / 60);
+      const mm = totalMinutes % 60;
+      return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+    }
+
+    const text = cellText(cell).replace(".", ":");
+    const match = text.match(/(\d{1,2})\s*:\s*(\d{1,2})/);
+    if (!match) return "";
+    const hh = Math.min(23, Math.max(0, Number(match[1])));
+    const mm = Math.min(59, Math.max(0, Number(match[2])));
+    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  };
+
+  const parseNumberCell = (cell) => {
+    if (!cell) return 0;
+    if (typeof cell.value === "number" && Number.isFinite(cell.value)) return cell.value;
+    const raw = cellText(cell)
+      .replace(/\s/g, "")
+      .replace(/\u00a0/g, "")
+      .replace(",", ".")
+      .replace(/[^\d.-]/g, "");
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : 0;
+  };
+
+  const parseDayCell = (cell) => {
+    if (!cell) return null;
+    const value = cell.value;
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return value.getDate();
+    }
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      if (value >= 1 && value <= 31) return Math.trunc(value);
+
+      // Excel serial date fallback.
+      const epoch = new Date(Date.UTC(1899, 11, 30));
+      const date = new Date(epoch.getTime() + Math.trunc(value) * 86400000);
+      const day = date.getUTCDate();
+      return day >= 1 && day <= 31 ? day : null;
+    }
+
+    const text = cellText(cell);
+    const match = text.match(/\b([0-3]?\d)\b/);
+    const day = match ? Number(match[1]) : NaN;
+    return day >= 1 && day <= 31 ? day : null;
+  };
+
+  const handleFile = async (event) => {
+    const file = event.target.files?.[0];
+    setError("");
+    setInfo("");
+    setRows([]);
+    setFileName(file?.name || "");
+
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      setError("Nahraj prosím soubor .xlsx. V Google Sheets zvol Soubor → Stáhnout → Microsoft Excel (.xlsx).");
+      return;
+    }
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(buffer);
+
+      const sheet = workbook.worksheets[0];
+      if (!sheet) {
+        setError("V souboru jsem nenašla žádný list.");
+        return;
+      }
+
+      let headerRowNumber = null;
+      let columns = null;
+
+      for (let r = 1; r <= Math.min(sheet.rowCount, 25); r += 1) {
+        const row = sheet.getRow(r);
+        const found = {};
+
+        row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+          const label = normalize(cellText(cell));
+          if (label === "OD") found.from = colNumber;
+          if (label === "DO") found.to = colNumber;
+          if (label === "BONUSY" || label === "BONUS") found.bonus = colNumber;
+          if (label === "DATUM" || label === "DEN") found.day = colNumber;
+        });
+
+        if (found.from && found.to && found.day) {
+          headerRowNumber = r;
+          columns = found;
+          break;
+        }
+      }
+
+      if (!headerRowNumber || !columns) {
+        setError("Nenašla jsem sloupce OD, DO a Datum. Tenhle import je nastavený na tabulku jako na tvém screenshotu.");
+        return;
+      }
+
+      const parsed = [];
+
+      for (let r = headerRowNumber + 1; r <= sheet.rowCount; r += 1) {
+        const row = sheet.getRow(r);
+
+        const firstTexts = [];
+        row.eachCell({ includeEmpty: false }, (cell) => firstTexts.push(normalize(cellText(cell))));
+        if (firstTexts.some((x) => x === "CELKEM")) break;
+
+        const day = parseDayCell(row.getCell(columns.day));
+        const start = parseTimeCell(row.getCell(columns.from));
+        const end = parseTimeCell(row.getCell(columns.to));
+        const bonus = columns.bonus ? parseNumberCell(row.getCell(columns.bonus)) : 0;
+
+        if (!day || !start || !end) continue;
+
+        parsed.push({
+          sourceRow: r,
+          day,
+          start,
+          end,
+          bonus: Math.max(0, Math.round(bonus * 100) / 100),
+        });
+      }
+
+      if (parsed.length === 0) {
+        setError("V tabulce jsem nenašla žádné směny s vyplněnými časy OD a DO.");
+        return;
+      }
+
+      setRows(parsed);
+      setInfo(`Našla jsem ${parsed.length} směn. Zkontroluj měsíc a zaměstnavatele a pak je můžeš importovat.`);
+    } catch (e) {
+      console.error(e);
+      setError("Soubor se nepodařilo přečíst. Zkus ho z Google Sheets stáhnout jako .xlsx.");
+    }
+  };
+
+  const doImport = async () => {
+    setError("");
+
+    if (!employerId) {
+      setError("Vyber zaměstnavatele.");
+      return;
+    }
+
+    if (!monthKey) {
+      setError("Vyber měsíc, do kterého směny patří.");
+      return;
+    }
+
+    if (!fallbackShiftType?.id) {
+      setError("V Nastavení musí existovat alespoň jeden typ směny.");
+      return;
+    }
+
+    if (rows.length === 0) {
+      setError("Nejdřív nahraj tabulku se směnami.");
+      return;
+    }
+
+    const [year, month] = monthKey.split("-").map(Number);
+    const maxDay = new Date(year, month, 0).getDate();
+
+    const candidates = rows
+      .filter((row) => row.day <= maxDay)
+      .map((row) => ({
+        ...row,
+        shiftDate: `${monthKey}-${String(row.day).padStart(2, "0")}`,
+      }));
+
+    const existingKeys = new Set(
+      shifts
+        .filter((s) => s.employer_id === employerId)
+        .map((s) => `${s.shift_date}|${s.custom_start_time || ""}|${s.custom_end_time || ""}`)
+    );
+
+    const unique = candidates.filter(
+      (row) => !existingKeys.has(`${row.shiftDate}|${row.start}|${row.end}`)
+    );
+
+    const skipped = candidates.length - unique.length;
+
+    if (unique.length === 0) {
+      setError("Všechny nalezené směny už ve Spay vypadají jako importované.");
+      return;
+    }
+
+    const payload = unique.map((row) => ({
+      user_id: userId,
+      employer_id: employerId,
+      shift_type_id: fallbackShiftType.id,
+      shift_date: row.shiftDate,
+      tip: 0,
+      bonus: row.bonus || 0,
+      consumption_amount: 0,
+      pause_override_min: 0,
+      status: "worked",
+      note: "Importováno z Google Sheets",
+      custom_start_time: row.start,
+      custom_end_time: row.end,
+      custom_surcharge_pct: 0,
+    }));
+
+    setImporting(true);
+
+    const { error: insertError } = await supabase.from("shifts").insert(payload);
+
+    setImporting(false);
+
+    if (insertError) {
+      setError(insertError.message || "Směny se nepodařilo importovat.");
+      return;
+    }
+
+    await onSaved();
+    setInfo(
+      skipped > 0
+        ? `Importováno ${unique.length} směn. ${skipped} duplicitních směn jsem přeskočila.`
+        : `Hotovo — importováno ${unique.length} směn včetně bonusů.`
+    );
+
+    setTimeout(() => onClose(), 650);
+  };
+
+  if (employers.length === 0) {
+    return (
+      <Sheet title="Import směn" onClose={onClose}>
+        <p style={{ fontSize: 14, color: C.sub, margin: 0 }}>
+          Nejdřív přidej zaměstnavatele v Nastavení.
+        </p>
+      </Sheet>
+    );
+  }
+
+  return (
+    <Sheet title="Import směn" onClose={onClose}>
+      <div style={{ background: C.card, borderRadius: 14, padding: 14, marginBottom: 16 }}>
+        <p style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: 0 }}>
+          Google Sheets → Spay
+        </p>
+        <p style={{ fontSize: 12, lineHeight: 1.45, color: C.sub, margin: "5px 0 0" }}>
+          V Google Sheets dej Soubor → Stáhnout → Microsoft Excel (.xlsx). Spay z tabulky načte sloupce OD, DO, BONUSY a Datum.
+        </p>
+      </div>
+
+      <Field label="Zaměstnavatel">
+        <select style={selectStyle} value={employerId} onChange={(e) => setEmployerId(e.target.value)}>
+          {employers.map((emp) => (
+            <option key={emp.id} value={emp.id}>
+              {emp.name} ({typeLabel(emp.type)})
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Měsíc tabulky">
+        <input
+          type="month"
+          style={inputStyle}
+          value={monthKey}
+          onChange={(e) => setMonthKey(e.target.value)}
+        />
+      </Field>
+
+      <Field label="Soubor z Google Sheets">
+        <input
+          type="file"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          onChange={handleFile}
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            background: C.card,
+            color: C.ink,
+            border: `0.5px solid ${C.line}`,
+            borderRadius: 12,
+            padding: "12px",
+            fontFamily: FONT,
+            fontSize: 13,
+          }}
+        />
+        {fileName && (
+          <p style={{ fontSize: 11, color: C.sub, margin: "6px 0 0" }}>{fileName}</p>
+        )}
+      </Field>
+
+      {rows.length > 0 && (
+        <div style={{ background: C.card, borderRadius: 14, overflow: "hidden", marginBottom: 14 }}>
+          <div style={{ padding: "11px 12px", borderBottom: `0.5px solid ${C.line}` }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: C.ink, margin: 0 }}>
+              Náhled importu · {rows.length} směn
+            </p>
+          </div>
+
+          {rows.slice(0, 6).map((row, index) => (
+            <div
+              key={`${row.sourceRow}-${index}`}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "42px 1fr auto",
+                gap: 8,
+                alignItems: "center",
+                padding: "9px 12px",
+                borderBottom: index < Math.min(rows.length, 6) - 1 ? `0.5px solid ${C.line}` : "none",
+              }}
+            >
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>{row.day}.</span>
+              <span style={{ fontSize: 12, color: C.ink }}>{row.start}–{row.end}</span>
+              <span style={{ fontSize: 12, color: row.bonus ? C.green : C.sub }}>
+                {row.bonus ? `${fmtK(row.bonus)} Kč bonus` : "bez bonusu"}
+              </span>
+            </div>
+          ))}
+
+          {rows.length > 6 && (
+            <p style={{ fontSize: 11, color: C.sub, margin: 0, padding: "9px 12px" }}>
+              + dalších {rows.length - 6} směn
+            </p>
+          )}
+        </div>
+      )}
+
+      {info && <p style={{ fontSize: 12, color: C.green, lineHeight: 1.4, margin: "0 0 10px" }}>{info}</p>}
+      <ErrorText>{error}</ErrorText>
+
+      <PrimaryButton onClick={doImport} disabled={importing || rows.length === 0}>
+        {importing ? "Importuji…" : `Importovat ${rows.length || ""} směn`}
+      </PrimaryButton>
+
+      <p style={{ fontSize: 11, color: C.sub, lineHeight: 1.45, margin: "12px 2px 0" }}>
+        Importované směny se uloží jako odpracované, s pauzou 0 min. Bonus se převezme ze sloupce BONUSY. Dýška ani jídlo/pití se z této tabulky nedají poznat, takže zůstanou 0 Kč.
+      </p>
+    </Sheet>
+  );
+}
+
+function CalendarScreen({ employers, shiftTypes, shifts, userName, onEdit, onAddShift, onImportShifts, onOpenSettings }) {
   const today = new Date();
   const [cursor, setCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(() => today.toISOString().slice(0, 10));
@@ -2480,6 +2860,25 @@ function CalendarScreen({ employers, shiftTypes, shifts, userName, onEdit, onAdd
           }}
         >
           Export pracovního výkazu (.xlsx)
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onImportShifts(monthKey)}
+          style={{
+            gridColumn: "1 / -1",
+            border: "none",
+            background: "var(--sp-green-soft)",
+            color: C.green,
+            borderRadius: 14,
+            padding: "12px 12px",
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+            fontFamily: FONT,
+          }}
+        >
+          Import směn z Google Sheets / Excelu
         </button>
       </div>
 
@@ -3323,6 +3722,7 @@ export default function App() {
   const [selectedShiftType, setSelectedShiftType] = useState(null);
   const [selectedEmployer, setSelectedEmployer] = useState(null);
   const [newShiftDate, setNewShiftDate] = useState(null);
+  const [importMonthKey, setImportMonthKey] = useState(() => new Date().toISOString().slice(0, 7));
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -3450,7 +3850,7 @@ export default function App() {
           <>
             {active === "overview" && <OverviewScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} userName={userName} onOpenSettings={() => setActive("settings")} />}
             {active === "shifts" && <ShiftsScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onAdd={() => { setNewShiftDate(null); setSheet("shift"); }} onStart={() => setSheet("start")} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} refresh={refresh} onOpenSettings={() => setActive("settings")} />}
-            {active === "calendar" && <CalendarScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} userName={userName} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} onAddShift={(date) => { setNewShiftDate(date); setSheet("shift"); }} onOpenSettings={() => setActive("settings")} />}
+            {active === "calendar" && <CalendarScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} userName={userName} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} onAddShift={(date) => { setNewShiftDate(date); setSheet("shift"); }} onImportShifts={(key) => { setImportMonthKey(key); setSheet("importShifts"); }} onOpenSettings={() => setActive("settings")} />}
             {active === "settings" && <SettingsScreen employers={employers} shiftTypes={shiftTypes} onAddShiftType={() => { setSelectedShiftType(null); setSheet("shiftType"); }} onEditShiftType={(shiftType) => { setSelectedShiftType(shiftType); setSheet("shiftType"); }} onAddEmployer={() => { setSelectedEmployer(null); setSheet("employer"); }} onEditEmployer={(employer) => { setSelectedEmployer(employer); setSheet("employer"); }} onLogout={() => supabase.auth.signOut()} refresh={refresh} session={session} onProfileUpdated={(user) => setSession((prev) => prev ? { ...prev, user } : prev)} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} />}
           </>
         )}
@@ -3461,6 +3861,7 @@ export default function App() {
       {sheet === "start" && <StartShiftSheet userId={userId} employers={employers} shiftTypes={shiftTypes} onClose={() => setSheet(null)} onSaved={refresh} />}
       {sheet === "employer" && <AddEmployerSheet userId={userId} employer={selectedEmployer} onClose={() => { setSheet(null); setSelectedEmployer(null); }} onSaved={refresh} />}
       {sheet === "shiftType" && <AddShiftTypeSheet userId={userId} shiftType={selectedShiftType} onClose={() => { setSheet(null); setSelectedShiftType(null); }} onSaved={refresh} />}
+      {sheet === "importShifts" && <ImportShiftsSheet userId={userId} employers={employers} shiftTypes={shiftTypes} shifts={shifts} initialMonthKey={importMonthKey} onClose={() => setSheet(null)} onSaved={refresh} />}
     </div>
   );
 }
