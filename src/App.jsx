@@ -127,6 +127,29 @@ function IconBadge({ Icon, color, small }) {
   );
 }
 
+function ProfileButton({ onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label="Otevřít nastavení účtu"
+      style={{
+        width: 36,
+        height: 36,
+        borderRadius: "50%",
+        border: "none",
+        background: "var(--sp-control)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: "pointer",
+        flexShrink: 0,
+      }}
+    >
+      <CircleUserRound size={20} color={C.ink} strokeWidth={1.9} />
+    </button>
+  );
+}
+
 function SpayBadge() {
   return (
     <div style={{ background: C.black, borderRadius: 8, padding: "5px 11px", display: "inline-flex", alignItems: "center" }}>
@@ -702,19 +725,6 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
   const plannedTotals = totalsForShifts(plannedShifts);
   const estimatedTotal = workedTotals.total + plannedTotals.total;
 
-  const perEmployer = employers.map((emp) => {
-    const empShifts = workedShifts.filter((s) => s.employer_id === emp.id);
-    let wage = 0, tips = 0, hours = 0;
-    empShifts.forEach((s) => {
-      const st = shiftTypes.find((t) => t.id === s.shift_type_id);
-      if (!st) return;
-      const effectiveType = resolvedShiftType(s, st);
-      wage += payForShift(s, emp, effectiveType);
-      tips += Number(s.tip) || 0;
-      hours += hoursForShift(s, effectiveType);
-    });
-    return { ...emp, wage, tips, hours, total: wage + tips };
-  });
 
   const wageTotal = workedTotals.wage;
   const tipsTotal = workedTotals.tips;
@@ -777,7 +787,11 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, margin: "14px 18px 0" }}>
         <div>
           <p style={{ fontSize: 36, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: "-0.035em", lineHeight: 1.05 }}>Přehled</p>
-          <p style={{ fontSize: 13, color: C.sub, margin: "7px 0 0" }}>Máš vše pod kontrolou ☁️</p>
+          {userName && (
+            <p style={{ fontSize: 14, color: C.ink, fontWeight: 600, margin: "7px 0 0" }}>
+              Užij si další směnu, <span style={{ color: C.blue }}>{userName}</span> 👋
+            </p>
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <select
@@ -793,24 +807,7 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
             })}
           </select>
 
-          <button
-            onClick={onOpenSettings}
-            aria-label="Otevřít nastavení účtu"
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: "50%",
-              border: "none",
-              background: "var(--sp-control)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              flexShrink: 0,
-            }}
-          >
-            <CircleUserRound size={20} color={C.ink} strokeWidth={1.9} />
-          </button>
+          <ProfileButton onClick={onOpenSettings} />
         </div>
       </div>
 
@@ -938,51 +935,6 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
       </div>
 
 
-      {userName && (
-        <p style={{ fontSize: 15, color: C.ink, fontWeight: 700, margin: "20px 20px 0" }}>
-          Užij si směnu, <span style={{ color: C.blue }}>{userName}</span> 👋
-        </p>
-      )}
-
-      <SectionHeader>Zaměstnavatelé</SectionHeader>
-      {perEmployer.length === 0 ? (
-        <p style={{ fontSize: 14, color: C.sub, margin: "0 16px", padding: "16px", textAlign: "center", background: C.card, borderRadius: 14 }}>
-          Zatím žádný zaměstnavatel ani směna.
-        </p>
-      ) : (
-        <div style={{ margin: "0 16px", display: "grid", gap: 10 }}>
-          {perEmployer.map((e) => {
-            const EmpIcon = EMPLOYER_ICONS[e.icon] || Coins;
-            const percent = e.monthly_limit ? Math.min(100, (e.wage / e.monthly_limit) * 100) : 0;
-            return (
-              <div key={e.id} style={{ background: C.card, borderRadius: 17, padding: "14px 14px 13px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <IconBadge Icon={EmpIcon} color={e.icon_color || C.blue} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: 15, fontWeight: 600, color: C.ink, margin: 0 }}>{e.name}</p>
-                    <p style={{ fontSize: 11, color: C.sub, margin: "2px 0 0" }}>{typeLabel(e.type)} · {Math.round(e.hours * 10) / 10} h</p>
-                  </div>
-                  <p style={{ fontSize: 15, fontWeight: 600, color: C.ink, margin: 0 }}>{fmtK(e.total)} Kč</p>
-                </div>
-
-                {e.monthly_limit && (
-                  <div style={{ margin: "11px 0 0 46px" }}>
-                    <div style={{ height: 6, background: "var(--sp-line)", borderRadius: 4, overflow: "hidden" }}>
-                      <div style={{
-                        height: "100%",
-                        width: `${percent}%`,
-                        background: percent > 85 ? C.red : (e.icon_color || C.blue),
-                        borderRadius: 4,
-                      }} />
-                    </div>
-                    <p style={{ fontSize: 10, color: C.sub, margin: "5px 0 0" }}>{fmtK(e.wage)} / {fmtK(e.monthly_limit)} Kč limit DPP</p>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
@@ -1063,7 +1015,7 @@ function SwipeableShiftRow({ children, onEdit, onDelete, isLast }) {
   );
 }
 
-function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit, refresh }) {
+function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit, refresh, onOpenSettings }) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [employerFilter, setEmployerFilter] = useState("all");
 
@@ -1280,7 +1232,7 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit, r
           <p style={{ fontSize: 12, color: C.sub, margin: "5px 0 0" }}>Spravuj své směny na jednom místě</p>
         </div>
 
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button
             onClick={onStart}
             aria-label="Start směny"
@@ -1308,6 +1260,7 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit, r
           >
             <Plus size={17} />
           </button>
+          <ProfileButton onClick={onOpenSettings} />
         </div>
       </div>
 
@@ -1426,7 +1379,7 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit, r
   );
 }
 
-function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift }) {
+function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift, onOpenSettings }) {
   const today = new Date();
   const [cursor, setCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(() => today.toISOString().slice(0, 10));
@@ -1467,27 +1420,30 @@ function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift }) {
 
   return (
     <div style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 40 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "18px 18px 0" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "18px 18px 0", gap: 10 }}>
         <button
           onClick={() => goMonth(-1)}
-          style={{ border: "none", background: C.card, width: 34, height: 34, borderRadius: 12, cursor: "pointer", fontSize: 20, color: C.ink }}
+          style={{ border: "none", background: C.card, width: 34, height: 34, borderRadius: 12, cursor: "pointer", fontSize: 20, color: C.ink, flexShrink: 0 }}
           aria-label="Předchozí měsíc"
         >
           ‹
         </button>
 
-        <div style={{ textAlign: "center" }}>
+        <div style={{ textAlign: "center", flex: 1, minWidth: 0 }}>
           <p style={{ fontSize: 28, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: "-0.03em" }}>Kalendář</p>
           <p style={{ fontSize: 12, color: C.sub, margin: "4px 0 0", textTransform: "capitalize" }}>{monthLabel}</p>
         </div>
 
-        <button
-          onClick={() => goMonth(1)}
-          style={{ border: "none", background: C.card, width: 34, height: 34, borderRadius: 12, cursor: "pointer", fontSize: 20, color: C.ink }}
-          aria-label="Další měsíc"
-        >
-          ›
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <button
+            onClick={() => goMonth(1)}
+            style={{ border: "none", background: C.card, width: 34, height: 34, borderRadius: 12, cursor: "pointer", fontSize: 20, color: C.ink }}
+            aria-label="Další měsíc"
+          >
+            ›
+          </button>
+          <ProfileButton onClick={onOpenSettings} />
+        </div>
       </div>
 
       <div style={{ margin: "18px 16px 0", background: C.card, borderRadius: 18, padding: "14px 12px 12px" }}>
@@ -1764,11 +1720,10 @@ function SettingsScreen({ employers, shiftTypes, onAddShiftType, onAddEmployer, 
       <SectionHeader>Typy směn</SectionHeader>
       <GroupedList>
         {shiftTypes.map((t, i) => {
-          const Icon = ICONS[t.icon] || Sun;
           return (
             <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", borderBottom: i < shiftTypes.length - 1 ? `0.5px solid ${C.line}` : "none" }}>
-              <IconBadge Icon={Icon} color={ICON_COLORS[t.icon] || C.blue} />
-              <div style={{ flex: 1 }}>
+              <div style={{ width: 4, minHeight: 42, alignSelf: "stretch", borderRadius: 4, background: ICON_COLORS[t.icon] || C.blue, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: 15, color: C.ink, margin: 0 }}>{t.name}</p>
                 <p style={{ fontSize: 12, color: C.sub, margin: "1px 0 0" }}>{t.start_time}–{t.end_time} · pauza {t.pause_min} min{t.surcharge_pct ? ` · +${t.surcharge_pct}%` : ""}</p>
               </div>
@@ -1782,17 +1737,20 @@ function SettingsScreen({ employers, shiftTypes, onAddShiftType, onAddEmployer, 
       <SectionHeader>Zaměstnavatelé</SectionHeader>
       <GroupedList>
         {employers.map((e, i) => {
-          const EmpIcon = EMPLOYER_ICONS[e.icon] || Coins;
           return (
           <div key={e.id} style={{ padding: "11px 14px", borderBottom: i < employers.length - 1 ? `0.5px solid ${C.line}` : "none" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 3 }}>
-              <IconBadge Icon={EmpIcon} color={e.icon_color || C.blue} small />
-              <p style={{ fontSize: 15, color: C.ink, margin: 0, flex: 1 }}>{e.name}</p>
-              <span style={{ fontSize: 11, fontWeight: 600, color: C.blue, background: "var(--sp-blue-soft)", borderRadius: 6, padding: "2px 8px" }}>{typeLabel(e.type)}</span>
-              <button onClick={() => removeEmployer(e.id)} aria-label="Smazat zaměstnavatele" style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={14} color={C.line} /></button>
+            <div style={{ display: "flex", alignItems: "stretch", gap: 10 }}>
+              <div style={{ width: 4, minHeight: 42, borderRadius: 4, background: e.icon_color || C.blue, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 3 }}>
+                  <p style={{ fontSize: 15, color: C.ink, margin: 0, flex: 1 }}>{e.name}</p>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: C.blue, background: "var(--sp-blue-soft)", borderRadius: 6, padding: "2px 8px" }}>{typeLabel(e.type)}</span>
+                  <button onClick={() => removeEmployer(e.id)} aria-label="Smazat zaměstnavatele" style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={14} color={C.line} /></button>
+                </div>
+                <p style={{ fontSize: 12, color: C.sub, margin: "0 0 2px" }}>{e.rate} Kč / h</p>
+                <p style={{ fontSize: 12, color: C.sub, margin: 0 }}>dýška: {e.track_tips ? "evidovat u každé směny" : "neevidovat"}</p>
+              </div>
             </div>
-            <p style={{ fontSize: 12, color: C.sub, margin: "0 0 2px 40px" }}>{e.rate} Kč / h</p>
-            <p style={{ fontSize: 12, color: C.sub, margin: "0 0 0 40px" }}>dýška: {e.track_tips ? "evidovat u každé směny" : "neevidovat"}</p>
           </div>
           );
         })}
@@ -1932,8 +1890,8 @@ export default function App() {
         ) : (
           <>
             {active === "overview" && <OverviewScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} userName={userName} onOpenSettings={() => setActive("settings")} />}
-            {active === "shifts" && <ShiftsScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onAdd={() => { setNewShiftDate(null); setSheet("shift"); }} onStart={() => setSheet("start")} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} refresh={refresh} />}
-            {active === "calendar" && <CalendarScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} onAddShift={(date) => { setNewShiftDate(date); setSheet("shift"); }} />}
+            {active === "shifts" && <ShiftsScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onAdd={() => { setNewShiftDate(null); setSheet("shift"); }} onStart={() => setSheet("start")} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} refresh={refresh} onOpenSettings={() => setActive("settings")} />}
+            {active === "calendar" && <CalendarScreen employers={employers} shiftTypes={shiftTypes} shifts={shifts} onEdit={(shift) => { setSelectedShift(shift); setSheet("editShift"); }} onAddShift={(date) => { setNewShiftDate(date); setSheet("shift"); }} onOpenSettings={() => setActive("settings")} />}
             {active === "settings" && <SettingsScreen employers={employers} shiftTypes={shiftTypes} onAddShiftType={() => setSheet("shiftType")} onAddEmployer={() => setSheet("employer")} onLogout={() => supabase.auth.signOut()} refresh={refresh} session={session} onProfileUpdated={(user) => setSession((prev) => prev ? { ...prev, user } : prev)} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} />}
           </>
         )}
