@@ -3905,14 +3905,6 @@ export default function App() {
     );
 
   if (needsOnboarding) {
-    if (loading) {
-      return (
-        <div style={{ ...themeVars, minHeight: "100vh", background: C.bg, color: C.ink, fontFamily: FONT }}>
-          <p style={{ textAlign: "center", color: C.sub, padding: 40 }}>Připravuji Spay…</p>
-        </div>
-      );
-    }
-
     return (
       <div style={themeVars}>
         <OnboardingScreen
