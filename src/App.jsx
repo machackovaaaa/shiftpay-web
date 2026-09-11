@@ -215,6 +215,7 @@ function AddShiftSheet({ userId, employers, shiftTypes, onClose, onSaved, initia
   const [startTime, setStartTime] = useState("08:00");
   const [endTime, setEndTime] = useState("16:00");
   const [tip, setTip] = useState("");
+  const [bonus, setBonus] = useState("");
   const [pauseMin, setPauseMin] = useState(30);
   const [status, setStatus] = useState("worked");
   const [note, setNote] = useState("");
@@ -248,6 +249,7 @@ function AddShiftSheet({ userId, employers, shiftTypes, onClose, onSaved, initia
       shift_type_id: fallbackShiftType.id,
       shift_date: date,
       tip: Number(tip) || 0,
+      bonus: Number(bonus) || 0,
       pause_override_min: Number(pauseMin) || 0,
       status,
       note: note.trim() || null,
@@ -311,6 +313,12 @@ function AddShiftSheet({ userId, employers, shiftTypes, onClose, onSaved, initia
         </Field>
       )}
 
+      {employer?.track_bonus !== false && (
+        <Field label="Bonus (Kč, nepovinné)">
+          <input type="number" min="0" style={inputStyle} value={bonus} onChange={(e) => setBonus(e.target.value)} />
+        </Field>
+      )}
+
       <Field label="Stav směny">
         <select style={selectStyle} value={status} onChange={(e) => setStatus(e.target.value)}>
           {SHIFT_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
@@ -354,7 +362,7 @@ function StartShiftSheet({ userId, employers, shiftTypes, onClose, onSaved }) {
     const now = new Date();
     const { error: err } = await supabase.from("shifts").insert({
       user_id: userId, employer_id: employerId, shift_type_id: shiftTypeId,
-      shift_date: now.toISOString().slice(0, 10), tip: 0,
+      shift_date: now.toISOString().slice(0, 10), tip: 0, bonus: 0,
       started_at: now.toISOString(), ended_at: null, pause_override_min: effectivePause,
     });
     if (err) { setError(err.message); return; }
@@ -420,14 +428,14 @@ function LiveShiftBanner({ shift, employer, shiftType, onStop }) {
 
 function AddEmployerSheet({ userId, onClose, onSaved }) {
   const [name, setName] = useState(""); const [type, setType] = useState("DPP");
-  const [rate, setRate] = useState(""); const [trackTips, setTrackTips] = useState(true);
+  const [rate, setRate] = useState(""); const [trackTips, setTrackTips] = useState(true); const [trackBonus, setTrackBonus] = useState(true);
   const [icon, setIcon] = useState("Briefcase");
   const [iconColor, setIconColor] = useState(EMPLOYER_COLORS[0]);
   const [error, setError] = useState("");
   const submit = async () => {
     if (!name.trim() || !rate || Number(rate) <= 0) { setError("Vyplň jméno a hodinovou sazbu."); return; }
     const { error: err } = await supabase.from("employers").insert({
-      user_id: userId, name: name.trim(), type, rate: Number(rate), track_tips: trackTips, icon, icon_color: iconColor,
+      user_id: userId, name: name.trim(), type, rate: Number(rate), track_tips: trackTips, track_bonus: trackBonus, icon, icon_color: iconColor,
       monthly_limit: type === "DPP" ? 10000 : null,
     });
     if (err) { setError(err.message); return; }
@@ -466,6 +474,15 @@ function AddEmployerSheet({ userId, onClose, onSaved }) {
             <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: trackTips ? 20 : 2, transition: "left 0.15s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
           </div>
           <span style={{ fontSize: 13, color: C.sub }}>{trackTips ? "evidovat u směn" : "neevidovat"}</span>
+        </button>
+      </Field>
+
+      <Field label="Bonus">
+        <button onClick={() => setTrackBonus((v) => !v)} style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+          <div style={{ width: 44, height: 26, borderRadius: 13, background: trackBonus ? C.green : C.line, position: "relative", transition: "background 0.15s" }}>
+            <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: trackBonus ? 20 : 2, transition: "left 0.15s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+          </div>
+          <span style={{ fontSize: 13, color: C.sub }}>{trackBonus ? "evidovat u směn" : "neevidovat"}</span>
         </button>
       </Field>
       <ErrorText>{error}</ErrorText>
@@ -617,6 +634,7 @@ function EditShiftSheet({ shift, userId, employers, shiftTypes, onClose, onSaved
   const [startTime, setStartTime] = useState(shift.custom_start_time || initialShiftType?.start_time || "08:00");
   const [endTime, setEndTime] = useState(shift.custom_end_time || initialShiftType?.end_time || "16:00");
   const [tip, setTip] = useState(String(shift.tip ?? 0));
+  const [bonus, setBonus] = useState(String(shift.bonus ?? 0));
   const [pauseMin, setPauseMin] = useState(shift.pause_override_min ?? "");
   const [status, setStatus] = useState(shift.status || "worked");
   const [note, setNote] = useState(shift.note || "");
@@ -641,6 +659,7 @@ function EditShiftSheet({ shift, userId, employers, shiftTypes, onClose, onSaved
         shift_type_id: shiftTypeId,
         shift_date: date,
         tip: Number(tip) || 0,
+        bonus: Number(bonus) || 0,
         pause_override_min: effectivePause,
         status,
         note: note.trim() || null,
@@ -673,6 +692,7 @@ function EditShiftSheet({ shift, userId, employers, shiftTypes, onClose, onSaved
       shift_type_id: shiftTypeId,
       shift_date: nextDate,
       tip: Number(tip) || 0,
+      bonus: Number(bonus) || 0,
       pause_override_min: effectivePause,
       status: "planned",
       note: note.trim() || null,
@@ -738,6 +758,12 @@ function EditShiftSheet({ shift, userId, employers, shiftTypes, onClose, onSaved
         </Field>
       )}
 
+      {employer?.track_bonus !== false && (
+        <Field label="Bonus (Kč)">
+          <input type="number" min="0" style={inputStyle} value={bonus} onChange={(e) => setBonus(e.target.value)} />
+        </Field>
+      )}
+
       <Field label="Stav směny">
         <select style={selectStyle} value={status} onChange={(e) => setStatus(e.target.value)}>
           {SHIFT_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
@@ -795,7 +821,7 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
   const plannedShifts = monthShifts.filter((s) => s.status === "planned");
 
   const totalsForShifts = (items) => {
-    let wage = 0, tips = 0, hours = 0;
+    let wage = 0, tips = 0, bonuses = 0, hours = 0;
     items.forEach((s) => {
       const emp = employers.find((e) => e.id === s.employer_id);
       const st = shiftTypes.find((t) => t.id === s.shift_type_id);
@@ -803,9 +829,10 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
       const effectiveType = resolvedShiftType(s, st);
       wage += payForShift(s, emp, effectiveType);
       tips += Number(s.tip) || 0;
+      bonuses += Number(s.bonus) || 0;
       hours += hoursForShift(s, effectiveType);
     });
-    return { wage, tips, hours, total: wage + tips };
+    return { wage, tips, bonuses, hours, total: wage + tips + bonuses };
   };
 
   const workedTotals = totalsForShifts(workedShifts);
@@ -815,6 +842,7 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
 
   const wageTotal = workedTotals.wage;
   const tipsTotal = workedTotals.tips;
+  const bonusesTotal = workedTotals.bonuses;
   const monthTotal = workedTotals.total;
   const monthHours = workedTotals.hours;
 
@@ -940,8 +968,9 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
           {tile("Odpracováno", `${Math.round(monthHours * 10) / 10} h`, "var(--sp-green-soft)", C.green)}
           {tile("Mzda", `${fmtK(wageTotal)} Kč`, "var(--sp-orange-soft)", "#C77A00")}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 8 }}>
           {tile("Dýška", `${fmtK(tipsTotal)} Kč`, "var(--sp-red-soft)", "#E23B50")}
+          {tile("Bonusy", `${fmtK(bonusesTotal)} Kč`, "var(--sp-blue-soft)", C.blue)}
           {tile("Celkem", `${fmtK(monthTotal)} Kč`, "var(--sp-purple-soft)", "#6C48D7")}
         </div>
       </div>
@@ -1174,7 +1203,7 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit, r
       if (!emp || !st) return;
       const effectiveType = resolvedShiftType(s, st);
       hours += hoursForShift(s, effectiveType);
-      total += payForShift(s, emp, effectiveType) + (Number(s.tip) || 0);
+      total += payForShift(s, emp, effectiveType) + (Number(s.tip) || 0) + (Number(s.bonus) || 0);
     });
     return `${items.length} ${items.length === 1 ? "směna" : items.length >= 2 && items.length <= 4 ? "směny" : "směn"} · ${Math.round(hours * 10) / 10} h · ${fmtK(total)} Kč`;
   };
@@ -1260,7 +1289,7 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit, r
           </span>
 
           <div style={{ textAlign: "right", flexShrink: 0, minWidth: 62 }}>
-            <p style={{ fontSize: 13, color: C.ink, margin: 0 }}>{fmtK(pay + (Number(s.tip) || 0))} Kč</p>
+            <p style={{ fontSize: 13, color: C.ink, margin: 0 }}>{fmtK(pay + (Number(s.tip) || 0) + (Number(s.bonus) || 0))} Kč</p>
             <p style={{ fontSize: 11, color: C.sub, margin: "2px 0 0" }}>{Math.round(hours * 10) / 10} h</p>
           </div>
 
@@ -1663,7 +1692,7 @@ function CalendarScreen({ employers, shiftTypes, shifts, onEdit, onAddShift, onO
                     {s.note && <p style={{ fontSize: 10, color: C.sub, margin: "3px 0 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.note}</p>}
                   </div>
                   <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <p style={{ fontSize: 13, fontWeight: 600, color: C.ink, margin: 0 }}>{fmtK(pay + (Number(s.tip) || 0))} Kč</p>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: C.ink, margin: 0 }}>{fmtK(pay + (Number(s.tip) || 0) + (Number(s.bonus) || 0))} Kč</p>
                     <ChevronRight size={15} color={C.line} style={{ marginTop: 4 }} />
                   </div>
                 </button>
@@ -1867,7 +1896,8 @@ function SettingsScreen({ employers, shiftTypes, onAddShiftType, onEditShiftType
                   <button onClick={() => removeEmployer(e.id)} aria-label="Smazat zaměstnavatele" style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={14} color={C.line} /></button>
                 </div>
                 <p style={{ fontSize: 12, color: C.sub, margin: "0 0 2px" }}>{e.rate} Kč / h</p>
-                <p style={{ fontSize: 12, color: C.sub, margin: 0 }}>dýška: {e.track_tips ? "evidovat u každé směny" : "neevidovat"}</p>
+                <p style={{ fontSize: 12, color: C.sub, margin: "0 0 2px" }}>dýška: {e.track_tips ? "evidovat u každé směny" : "neevidovat"}</p>
+                <p style={{ fontSize: 12, color: C.sub, margin: 0 }}>bonus: {e.track_bonus !== false ? "evidovat u každé směny" : "neevidovat"}</p>
               </div>
             </div>
           </div>
