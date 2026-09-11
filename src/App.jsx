@@ -672,102 +672,184 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName }) {
       tips += Number(s.tip) || 0;
       hours += hoursForShift(s, effectiveType);
     });
-    return { ...emp, wage, tips, hours };
+    return { ...emp, wage, tips, hours, total: wage + tips };
   });
-  const wageTotal = perEmployer.reduce((a, e) => a + e.wage, 0);
-  const tipsTotal = perEmployer.reduce((a, e) => a + e.tips, 0);
-  const monthTotal = wageTotal + tipsTotal;
-  const monthHours = perEmployer.reduce((a, e) => a + e.hours, 0);
+
+  const wageTotal = workedTotals.wage;
+  const tipsTotal = workedTotals.tips;
+  const monthTotal = workedTotals.total;
+  const monthHours = workedTotals.hours;
+
+  const upcoming = [...plannedShifts]
+    .filter((s) => s.shift_date >= now.toISOString().slice(0, 10))
+    .sort((a, b) => a.shift_date.localeCompare(b.shift_date))
+    .slice(0, 3);
+
+  const tile = (label, value, bg, color = C.ink) => (
+    <div style={{
+      background: bg,
+      borderRadius: 14,
+      padding: "13px 12px",
+      minHeight: 78,
+      boxSizing: "border-box",
+    }}>
+      <p style={{ fontSize: 11, color: C.sub, margin: "0 0 5px" }}>{label}</p>
+      <p style={{ fontSize: 18, fontWeight: 700, color, margin: 0, letterSpacing: "-0.01em" }}>{value}</p>
+    </div>
+  );
 
   return (
     <div style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 40 }}>
-      <p style={{ fontSize: 34, fontWeight: 700, color: C.ink, margin: "12px 20px 0", letterSpacing: "-0.02em" }}>Přehled</p>
-      <p style={{ fontSize: 15, color: C.sub, margin: "2px 20px 18px", textTransform: "capitalize" }}>{monthLabel}</p>
-
-      <div style={{ margin: "0 16px", background: C.card, borderRadius: 16, padding: "20px 20px 22px" }}>
-        <p style={{ fontSize: 13, color: C.sub, margin: "0 0 4px" }}>Celkem tento měsíc</p>
-        <p style={{ fontSize: 40, fontWeight: 700, color: C.ink, margin: "0 0 16px", letterSpacing: "-0.02em" }}>{fmtK(monthTotal)} Kč</p>
-        <div style={{ display: "flex", gap: 24 }}>
-          <div>
-            <p style={{ fontSize: 12, color: C.sub, margin: "0 0 2px" }}>Mzda</p>
-            <p style={{ fontSize: 16, fontWeight: 600, color: C.ink, margin: 0 }}>{fmtK(wageTotal)} Kč</p>
-          </div>
-          <div>
-            <p style={{ fontSize: 12, color: C.sub, margin: "0 0 2px" }}>Dýška</p>
-            <p style={{ fontSize: 16, fontWeight: 600, color: C.green, margin: 0 }}>{fmtK(tipsTotal)} Kč</p>
-          </div>
-          <div>
-            <p style={{ fontSize: 12, color: C.sub, margin: "0 0 2px" }}>Hodiny</p>
-            <p style={{ fontSize: 16, fontWeight: 600, color: C.ink, margin: 0 }}>{Math.round(monthHours * 10) / 10} h</p>
-          </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, margin: "14px 18px 0" }}>
+        <div>
+          <p style={{ fontSize: 36, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: "-0.035em", lineHeight: 1.05 }}>Přehled</p>
+          <p style={{ fontSize: 13, color: C.sub, margin: "7px 0 0" }}>Máš vše pod kontrolou ☁️</p>
+        </div>
+        <div style={{
+          background: "#ECECF0",
+          borderRadius: 18,
+          padding: "8px 12px",
+          fontSize: 12,
+          fontWeight: 600,
+          color: C.ink,
+          textTransform: "capitalize",
+          whiteSpace: "nowrap",
+        }}>
+          {monthLabel}
         </div>
       </div>
 
       <div style={{
-        margin: "12px 16px 0",
-        background: "#EAF3FF",
-        borderRadius: 16,
-        padding: "16px 18px",
+        margin: "22px 16px 0",
+        background: "linear-gradient(135deg, #F0EAFF 0%, #EAF3FF 100%)",
+        borderRadius: 18,
+        padding: "18px 18px 16px",
+        boxShadow: "0 1px 0 rgba(0,0,0,0.03)",
       }}>
-        <p style={{ fontSize: 12, color: C.sub, margin: "0 0 4px" }}>Odhad výplaty do konce měsíce</p>
-        <p style={{ fontSize: 28, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: "-0.02em" }}>
-          {fmtK(estimatedTotal)} Kč
-        </p>
-        <p style={{ fontSize: 12, color: C.sub, margin: "4px 0 12px" }}>
-          Na základě odpracovaných a plánovaných směn
-        </p>
-        <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
           <div>
-            <p style={{ fontSize: 11, color: C.sub, margin: "0 0 2px" }}>Aktuálně vyděláno</p>
-            <p style={{ fontSize: 14, fontWeight: 600, color: C.ink, margin: 0 }}>{fmtK(workedTotals.total)} Kč</p>
+            <p style={{ fontSize: 12, color: C.ink, fontWeight: 600, margin: "0 0 6px" }}>Odhad výplaty do konce měsíce</p>
+            <p style={{ fontSize: 31, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: "-0.03em" }}>{fmtK(estimatedTotal)} Kč</p>
+            <p style={{ fontSize: 11, color: C.sub, margin: "5px 0 0" }}>Na základě odpracovaných a plánovaných směn</p>
+          </div>
+          <div style={{ width: 40, height: 40, borderRadius: 14, background: "rgba(255,255,255,0.55)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Coins size={19} color={C.blue} />
+          </div>
+        </div>
+        <div style={{ height: 1, background: "rgba(0,0,0,0.06)", margin: "14px 0 12px" }} />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div>
+            <p style={{ fontSize: 10, color: C.sub, margin: "0 0 2px" }}>Aktuálně vyděláno</p>
+            <p style={{ fontSize: 15, fontWeight: 700, color: C.green, margin: 0 }}>{fmtK(workedTotals.total)} Kč</p>
           </div>
           <div>
-            <p style={{ fontSize: 11, color: C.sub, margin: "0 0 2px" }}>Ještě plánováno</p>
-            <p style={{ fontSize: 14, fontWeight: 600, color: C.blue, margin: 0 }}>{fmtK(plannedTotals.total)} Kč</p>
+            <p style={{ fontSize: 10, color: C.sub, margin: "0 0 2px" }}>Ještě naplánováno</p>
+            <p style={{ fontSize: 15, fontWeight: 700, color: C.blue, margin: 0 }}>{fmtK(plannedTotals.total)} Kč</p>
           </div>
         </div>
       </div>
 
+      <div style={{ margin: "14px 16px 0", background: C.card, borderRadius: 18, padding: "15px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Calendar size={17} color={C.blue} />
+            <p style={{ fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 }}>Souhrn měsíce</p>
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+          {tile("Počet směn", String(workedShifts.length), "#EAF3FF", C.blue)}
+          {tile("Odpracováno", `${Math.round(monthHours * 10) / 10} h`, "#E9F8EE", C.green)}
+          {tile("Mzda", `${fmtK(wageTotal)} Kč`, "#FFF3DD", "#C77A00")}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+          {tile("Dýška", `${fmtK(tipsTotal)} Kč`, "#FFE9EC", "#E23B50")}
+          {tile("Celkem", `${fmtK(monthTotal)} Kč`, "#F0EAFF", "#6C48D7")}
+        </div>
+      </div>
+
+      {upcoming.length > 0 && (
+        <div style={{ margin: "14px 16px 0", background: C.card, borderRadius: 18, overflow: "hidden" }}>
+          <div style={{ padding: "14px 15px 9px" }}>
+            <p style={{ fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 }}>Nejbližší směny</p>
+          </div>
+          {upcoming.map((s, i) => {
+            const emp = employers.find((e) => e.id === s.employer_id);
+            const st = shiftTypes.find((t) => t.id === s.shift_type_id);
+            if (!emp || !st) return null;
+            const effectiveType = resolvedShiftType(s, st);
+            const hours = hoursForShift(s, effectiveType);
+            const pay = payForShift(s, emp, effectiveType);
+            const d = new Date(s.shift_date + "T00:00:00");
+            return (
+              <div key={s.id} style={{ display: "flex", gap: 10, padding: "11px 15px", borderTop: i === 0 ? "none" : `0.5px solid ${C.line}` }}>
+                <div style={{ width: 40, flexShrink: 0 }}>
+                  <p style={{ fontSize: 11, color: C.sub, margin: 0, textTransform: "capitalize" }}>{d.toLocaleDateString("cs-CZ", { weekday: "short" })}</p>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: "2px 0 0" }}>{d.getDate()}. {d.getMonth() + 1}.</p>
+                </div>
+                <div style={{ width: 3, borderRadius: 2, background: emp.icon_color || C.blue, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: 0 }}>{emp.name}</p>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: C.blue, background: "#E8F1FF", borderRadius: 8, padding: "3px 6px", whiteSpace: "nowrap" }}>Plánovaná</span>
+                  </div>
+                  <p style={{ fontSize: 11, color: C.sub, margin: "3px 0 0" }}>
+                    {effectiveType.start_time}–{effectiveType.end_time} · {hours} h · {fmtK(pay)} Kč
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {userName && (
-        <p style={{ fontSize: 15, color: C.ink, fontWeight: 600, margin: "20px 20px 0" }}>
+        <p style={{ fontSize: 15, color: C.ink, fontWeight: 700, margin: "20px 20px 0" }}>
           Užij si směnu, <span style={{ color: C.blue }}>{userName}</span> 👋
         </p>
       )}
+
       <SectionHeader>Zaměstnavatelé</SectionHeader>
       {perEmployer.length === 0 ? (
-        <p style={{ fontSize: 14, color: C.sub, margin: "0 16px", padding: "16px", textAlign: "center", background: C.card, borderRadius: 12 }}>Zatím žádný zaměstnavatel ani směna.</p>
+        <p style={{ fontSize: 14, color: C.sub, margin: "0 16px", padding: "16px", textAlign: "center", background: C.card, borderRadius: 14 }}>
+          Zatím žádný zaměstnavatel ani směna.
+        </p>
       ) : (
-        <GroupedList>
-          {perEmployer.map((e, i) => {
+        <div style={{ margin: "0 16px", display: "grid", gap: 10 }}>
+          {perEmployer.map((e) => {
             const EmpIcon = EMPLOYER_ICONS[e.icon] || Coins;
+            const percent = e.monthly_limit ? Math.min(100, (e.wage / e.monthly_limit) * 100) : 0;
             return (
-            <div key={e.id} style={{ padding: "12px 14px", borderBottom: i < perEmployer.length - 1 ? `0.5px solid ${C.line}` : "none" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <IconBadge Icon={EmpIcon} color={e.icon_color || C.blue} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 15, color: C.ink, margin: 0 }}>{e.name}</p>
-                  <p style={{ fontSize: 12, color: C.sub, margin: "1px 0 0" }}>{typeLabel(e.type)} · {Math.round(e.hours * 10) / 10} h</p>
-                </div>
-                <span style={{ fontSize: 15, color: C.ink }}>{fmtK(e.wage)} Kč</span>
-              </div>
-              {e.tips > 0 && <p style={{ fontSize: 12, color: C.green, margin: "6px 0 0 46px" }}>+ {fmtK(e.tips)} Kč dýška</p>}
-              {e.monthly_limit && (
-                <div style={{ margin: "8px 0 0 46px" }}>
-                  <div style={{ height: 5, background: C.line, borderRadius: 3, overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: `${Math.min(100, (e.wage / e.monthly_limit) * 100)}%`, background: e.wage / e.monthly_limit > 0.85 ? C.red : C.green, borderRadius: 3 }} />
+              <div key={e.id} style={{ background: C.card, borderRadius: 17, padding: "14px 14px 13px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <IconBadge Icon={EmpIcon} color={e.icon_color || C.blue} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 15, fontWeight: 600, color: C.ink, margin: 0 }}>{e.name}</p>
+                    <p style={{ fontSize: 11, color: C.sub, margin: "2px 0 0" }}>{typeLabel(e.type)} · {Math.round(e.hours * 10) / 10} h</p>
                   </div>
-                  <p style={{ fontSize: 11, color: C.sub, margin: "4px 0 0" }}>{fmtK(e.wage)} / {fmtK(e.monthly_limit)} Kč limit DPP</p>
+                  <p style={{ fontSize: 15, fontWeight: 600, color: C.ink, margin: 0 }}>{fmtK(e.total)} Kč</p>
                 </div>
-              )}
-            </div>
+
+                {e.monthly_limit && (
+                  <div style={{ margin: "11px 0 0 46px" }}>
+                    <div style={{ height: 6, background: "#E4E5E9", borderRadius: 4, overflow: "hidden" }}>
+                      <div style={{
+                        height: "100%",
+                        width: `${percent}%`,
+                        background: percent > 85 ? C.red : (e.icon_color || C.blue),
+                        borderRadius: 4,
+                      }} />
+                    </div>
+                    <p style={{ fontSize: 10, color: C.sub, margin: "5px 0 0" }}>{fmtK(e.wage)} / {fmtK(e.monthly_limit)} Kč limit DPP</p>
+                  </div>
+                )}
+              </div>
             );
           })}
-        </GroupedList>
+        </div>
       )}
     </div>
   );
 }
-
 function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit }) {
   const finished = shifts.filter((s) => !isLiveShift(s));
   const sorted = [...finished].sort((a, b) => (a.shift_date < b.shift_date ? 1 : -1));
