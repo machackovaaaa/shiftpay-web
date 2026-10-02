@@ -441,7 +441,7 @@ function LiveShiftBanner({ shift, employer, shiftType, onStop }) {
   if (!shift) return null;
   const Icon = ICONS[shiftType?.icon] || Sun;
   return (
-    <div style={{ background: C.black, borderRadius: 16, padding: "14px 16px", margin: "16px 16px 0", display: "flex", alignItems: "center", gap: 14, maxWidth: 520, marginLeft: "auto", marginRight: "auto" }}>
+    <div className="spay-live-banner" style={{ background: C.black, borderRadius: 16, padding: "14px 16px", margin: "16px 16px 0", display: "flex", alignItems: "center", gap: 14, maxWidth: 520, marginLeft: "auto", marginRight: "auto" }}>
       <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
         <Icon size={16} color="#fff" />
       </div>
@@ -3981,69 +3981,63 @@ export default function App() {
   return (
     <div style={{ ...themeVars, minHeight: "100vh", background: C.bg, color: C.ink, fontFamily: FONT, display: "flex", flexDirection: "column" }}>
       <style>{`
-        @media (min-width: 900px) {
+        /*
+          Compact desktop / tablet:
+          Mac Retina screenshots can be ~2x the CSS viewport width,
+          so the desktop layout starts earlier than 900px.
+        */
+        @media (min-width: 680px) {
           .spay-overview {
-            width: calc(100% - 72px) !important;
-            max-width: 1180px !important;
-            display: grid !important;
-            grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
-            grid-template-areas:
-              "header header"
-              "forecast forecast"
-              "summary trends";
-            column-gap: 20px;
-            row-gap: 18px;
-            align-items: start;
-            padding-bottom: 80px !important;
+            width: calc(100% - 48px) !important;
+            max-width: 920px !important;
+            padding-bottom: 92px !important;
           }
 
           .spay-overview-header {
-            grid-area: header;
-            margin: 26px 0 2px !important;
+            margin: 24px 0 4px !important;
           }
 
           .spay-overview-header > div:first-child > p:first-child {
-            font-size: 44px !important;
+            font-size: 42px !important;
           }
 
           .spay-overview-forecast {
-            grid-area: forecast;
-            margin: 0 !important;
+            margin: 22px 0 0 !important;
             border-radius: 24px !important;
-            padding: 24px 28px 22px !important;
+            padding: 24px 26px 22px !important;
           }
 
-          .spay-overview-summary {
-            grid-area: summary;
-            margin: 0 !important;
-            border-radius: 22px !important;
-            padding: 20px !important;
-          }
-
+          .spay-overview-summary,
           .spay-overview-trends {
-            grid-area: trends;
-            margin: 0 !important;
+            margin: 18px 0 0 !important;
             border-radius: 22px !important;
             padding: 20px !important;
           }
 
           .spay-shifts-page,
           .spay-calendar-page {
-            width: calc(100% - 72px) !important;
-            max-width: 940px !important;
-            padding-bottom: 80px !important;
+            width: calc(100% - 48px) !important;
+            max-width: 920px !important;
+            padding-bottom: 92px !important;
           }
 
           .spay-settings-page {
-            width: calc(100% - 72px) !important;
-            max-width: 780px !important;
-            padding-bottom: 80px !important;
+            width: calc(100% - 48px) !important;
+            max-width: 760px !important;
+            padding-bottom: 92px !important;
+          }
+
+          .spay-live-banner {
+            width: calc(100% - 48px) !important;
+            max-width: 680px !important;
+            box-sizing: border-box;
+            margin-top: 18px !important;
           }
 
           .spay-tabbar {
-            width: 430px;
-            margin: 0 auto 18px;
-            bottom: 18px !important;
+            width: min(430px, calc(100% - 48px));
+            margin: 0 auto 16px;
+            bottom: 16px !important;
             border: 0.5px solid var(--sp-line) !important;
             border-radius: 20px;
             overflow: hidden;
@@ -4053,14 +4047,74 @@ export default function App() {
           }
         }
 
-        @media (min-width: 1200px) {
+        /*
+          Wide desktop:
+          only here do we split the dashboard into two columns.
+        */
+        @media (min-width: 1050px) {
           .spay-overview {
-            width: calc(100% - 120px) !important;
-            max-width: 1240px !important;
+            width: calc(100% - 96px) !important;
+            max-width: 1180px !important;
+            display: grid !important;
+            grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+            grid-template-areas:
+              "header header"
+              "forecast forecast"
+              "summary trends";
+            column-gap: 22px;
+            row-gap: 20px;
+            align-items: start;
+          }
+
+          .spay-overview-header {
+            grid-area: header;
+            margin: 30px 0 0 !important;
+          }
+
+          .spay-overview-header > div:first-child > p:first-child {
+            font-size: 46px !important;
           }
 
           .spay-overview-forecast {
-            padding: 28px 32px 24px !important;
+            grid-area: forecast;
+            margin: 0 !important;
+            padding: 28px 32px 25px !important;
+          }
+
+          .spay-overview-summary {
+            grid-area: summary;
+            margin: 0 !important;
+          }
+
+          .spay-overview-trends {
+            grid-area: trends;
+            margin: 0 !important;
+          }
+
+          .spay-shifts-page,
+          .spay-calendar-page {
+            width: calc(100% - 96px) !important;
+            max-width: 1080px !important;
+          }
+
+          .spay-settings-page {
+            width: calc(100% - 96px) !important;
+            max-width: 860px !important;
+          }
+
+          .spay-live-banner {
+            max-width: 760px !important;
+          }
+        }
+
+        @media (min-width: 1380px) {
+          .spay-overview {
+            max-width: 1260px !important;
+          }
+
+          .spay-shifts-page,
+          .spay-calendar-page {
+            max-width: 1160px !important;
           }
         }
       `}</style>
