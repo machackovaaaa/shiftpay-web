@@ -1144,8 +1144,8 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
   );
 
   return (
-    <div style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 40 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, margin: "14px 18px 0" }}>
+    <div className="spay-overview" style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 40 }}>
+      <div className="spay-overview-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, margin: "14px 18px 0" }}>
         <div>
           <p style={{ fontSize: 36, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: "-0.035em", lineHeight: 1.05 }}>Přehled</p>
           {userName && (
@@ -1172,7 +1172,7 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
         </div>
       </div>
 
-      <div style={{
+      <div className="spay-overview-forecast" style={{
         margin: "22px 16px 0",
         background: "linear-gradient(135deg, var(--sp-purple-soft) 0%, var(--sp-blue-soft) 100%)",
         borderRadius: 18,
@@ -1202,7 +1202,7 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
         </div>
       </div>
 
-      <div style={{ margin: "14px 16px 0", background: C.card, borderRadius: 18, padding: "15px" }}>
+      <div className="spay-overview-summary" style={{ margin: "14px 16px 0", background: C.card, borderRadius: 18, padding: "15px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Calendar size={17} color={C.blue} />
@@ -1222,7 +1222,7 @@ function OverviewScreen({ employers, shiftTypes, shifts, userName, onOpenSetting
         </div>
       </div>
 
-      <div style={{ margin: "14px 16px 0", background: C.card, borderRadius: 18, padding: "15px" }}>
+      <div className="spay-overview-trends" style={{ margin: "14px 16px 0", background: C.card, borderRadius: 18, padding: "15px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
           <div>
             <p style={{ fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 }}>Trendy</p>
@@ -1698,7 +1698,7 @@ function ShiftsScreen({ employers, shiftTypes, shifts, onAdd, onStart, onEdit, r
   };
 
   return (
-    <div style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 40 }}>
+    <div className="spay-shifts-page" style={ maxWidth: 560, margin: "0 auto", paddingBottom: 40 }>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", margin: "12px 20px 0", gap: 12 }}>
         <div>
           <p style={{ fontSize: 34, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: "-0.025em" }}>Směny</p>
@@ -2775,7 +2775,7 @@ function CalendarScreen({ employers, shiftTypes, shifts, userName, onEdit, onAdd
   };
 
   return (
-    <div style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 40 }}>
+    <div className="spay-calendar-page" style={ maxWidth: 560, margin: "0 auto", paddingBottom: 40 }>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "18px 18px 0", gap: 10 }}>
         <button
           onClick={() => goMonth(-1)}
@@ -3137,7 +3137,7 @@ function SettingsScreen({ employers, shiftTypes, onAddShiftType, onEditShiftType
     refresh();
   };
   return (
-    <div style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 40 }}>
+    <div className="spay-settings-page" style={ maxWidth: 560, margin: "0 auto", paddingBottom: 40 }>
       <p style={{ fontSize: 34, fontWeight: 700, color: C.ink, margin: "12px 20px 18px", letterSpacing: "-0.02em" }}>Nastavení</p>
 
       <SectionHeader>Osobní údaje</SectionHeader>
@@ -3338,7 +3338,7 @@ function TabBar({ active, setActive }) {
     { id: "calendar", label: "Kalendář", Icon: Calendar },
   ];
   return (
-    <div style={{ position: "sticky", bottom: 0, display: "flex", borderTop: `0.5px solid ${C.line}`, background: "var(--sp-bar-strong)", backdropFilter: "blur(10px)", padding: "8px 0 calc(8px + env(safe-area-inset-bottom))" }}>
+    <div className="spay-tabbar" style={{ position: "sticky", bottom: 0, display: "flex", borderTop: `0.5px solid ${C.line}`, background: "var(--sp-bar-strong)", backdropFilter: "blur(10px)", padding: "8px 0 calc(8px + env(safe-area-inset-bottom))" }}>
       {tabs.map(({ id, label, Icon }) => {
         const isActive = active === id;
         return (
@@ -3980,6 +3980,90 @@ export default function App() {
 
   return (
     <div style={{ ...themeVars, minHeight: "100vh", background: C.bg, color: C.ink, fontFamily: FONT, display: "flex", flexDirection: "column" }}>
+      <style>{`
+        @media (min-width: 900px) {
+          .spay-overview {
+            width: calc(100% - 72px) !important;
+            max-width: 1180px !important;
+            display: grid !important;
+            grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+            grid-template-areas:
+              "header header"
+              "forecast forecast"
+              "summary trends";
+            column-gap: 20px;
+            row-gap: 18px;
+            align-items: start;
+            padding-bottom: 80px !important;
+          }
+
+          .spay-overview-header {
+            grid-area: header;
+            margin: 26px 0 2px !important;
+          }
+
+          .spay-overview-header > div:first-child > p:first-child {
+            font-size: 44px !important;
+          }
+
+          .spay-overview-forecast {
+            grid-area: forecast;
+            margin: 0 !important;
+            border-radius: 24px !important;
+            padding: 24px 28px 22px !important;
+          }
+
+          .spay-overview-summary {
+            grid-area: summary;
+            margin: 0 !important;
+            border-radius: 22px !important;
+            padding: 20px !important;
+          }
+
+          .spay-overview-trends {
+            grid-area: trends;
+            margin: 0 !important;
+            border-radius: 22px !important;
+            padding: 20px !important;
+          }
+
+          .spay-shifts-page,
+          .spay-calendar-page {
+            width: calc(100% - 72px) !important;
+            max-width: 940px !important;
+            padding-bottom: 80px !important;
+          }
+
+          .spay-settings-page {
+            width: calc(100% - 72px) !important;
+            max-width: 780px !important;
+            padding-bottom: 80px !important;
+          }
+
+          .spay-tabbar {
+            width: 430px;
+            margin: 0 auto 18px;
+            bottom: 18px !important;
+            border: 0.5px solid var(--sp-line) !important;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 10px 28px rgba(0,0,0,0.10);
+            padding: 9px 6px !important;
+            z-index: 10;
+          }
+        }
+
+        @media (min-width: 1200px) {
+          .spay-overview {
+            width: calc(100% - 120px) !important;
+            max-width: 1240px !important;
+          }
+
+          .spay-overview-forecast {
+            padding: 28px 32px 24px !important;
+          }
+        }
+      `}</style>
       <TopBrandBar />
       {liveShift && <LiveShiftBanner shift={liveShift} employer={liveEmployer} shiftType={liveShiftType} onStop={stopLiveShift} />}
       <div style={{ flex: 1 }}>
