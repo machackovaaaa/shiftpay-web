@@ -3077,8 +3077,65 @@ function SettingsScreen({ employers, shiftTypes, onAddShiftType, onEditShiftType
     setNameMessage("Uloženo ✓");
   };
 
-  const removeShiftType = async (id) => { await supabase.from("shift_types").delete().eq("id", id); refresh(); };
-  const removeEmployer = async (id) => { await supabase.from("employers").delete().eq("id", id); refresh(); };
+  const removeShiftType = async (id) => {
+    const { count, error: countError } = await supabase
+      .from("shifts")
+      .select("id", { count: "exact", head: true })
+      .eq("shift_type_id", id);
+
+    if (countError) {
+      window.alert("Nepodařilo se ověřit, jestli se tento typ směny používá. Nic jsem nesmazala.");
+      return;
+    }
+
+    if ((count || 0) > 0) {
+      window.alert(
+        `Tento typ směny používá ${count} ${count === 1 ? "směna" : count < 5 ? "směny" : "směn"}. ` +
+        "Kvůli ochraně dat ho teď nejde smazat. Nejprve uprav tyto směny nebo typ jen přejmenuj."
+      );
+      return;
+    }
+
+    if (!window.confirm("Opravdu chceš tento typ směny smazat?")) return;
+
+    const { error } = await supabase.from("shift_types").delete().eq("id", id);
+    if (error) {
+      window.alert("Typ směny se nepodařilo smazat.");
+      return;
+    }
+
+    refresh();
+  };
+
+  const removeEmployer = async (id) => {
+    const { count, error: countError } = await supabase
+      .from("shifts")
+      .select("id", { count: "exact", head: true })
+      .eq("employer_id", id);
+
+    if (countError) {
+      window.alert("Nepodařilo se ověřit, jestli má tento zaměstnavatel uložené směny. Nic jsem nesmazala.");
+      return;
+    }
+
+    if ((count || 0) > 0) {
+      window.alert(
+        `Tento zaměstnavatel má ${count} ${count === 1 ? "směnu" : count < 5 ? "směny" : "směn"}. ` +
+        "Kvůli ochraně dat ho teď nejde smazat. Můžeš ho upravit, ale ne smazat."
+      );
+      return;
+    }
+
+    if (!window.confirm("Opravdu chceš tohoto zaměstnavatele smazat?")) return;
+
+    const { error } = await supabase.from("employers").delete().eq("id", id);
+    if (error) {
+      window.alert("Zaměstnavatele se nepodařilo smazat.");
+      return;
+    }
+
+    refresh();
+  };
   return (
     <div style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 40 }}>
       <p style={{ fontSize: 34, fontWeight: 700, color: C.ink, margin: "12px 20px 18px", letterSpacing: "-0.02em" }}>Nastavení</p>
